@@ -1,11 +1,25 @@
-"""Le « cerveau » de Celia : les questions sont envoyées à Claude via l'API Anthropic."""
+"""Le « cerveau » de Celia.
+
+Trois moteurs possibles :
+- « claude » : Claude via l'API Anthropic (le meilleur ; nécessite une clé et du crédit) ;
+- « ollama » : une IA gratuite qui tourne sur l'ordinateur (https://ollama.com) ;
+- « demo »   : mode test gratuit, sans IA (heure, date, planning) pour vérifier micro et voix.
+"""
 import datetime
 import re
 import time
 
 import anthropic
 
+from . import local_ai
 from .tools import TOOLS, execute
+
+ENGINES = {
+    "auto": "Automatique (Claude si une clé est saisie, sinon gratuit)",
+    "claude": "Claude — API Anthropic (le meilleur, payant)",
+    "ollama": "Ollama — IA gratuite sur cet ordinateur",
+    "demo": "Démo — test gratuit sans IA",
+}
 
 MODELS = {
     "claude-opus-5-5": "Claude Opus 5.5 (le plus intelligent)",
@@ -66,26 +80,63 @@ class Brain:
         self.memory = memory
         self.history = []
         self.last_exchange = 0.0
+        self._last_error = ""
 
     def reset(self):
         self.history = []
 
-    def ask(self, question: str) -> str:
-        cfg = self.config
-        if not cfg.api_key:
-            return ("Je n'ai pas encore de clé API. Ouvrez les réglages et collez votre clé "
-                    "Anthropic pour que je puisse vous répondre.")
-        if time.time() - self.last_exchange > FORGET_AFTER_SECONDS:
-            self.history = []
+    def engine(self) -> str:
+        """Moteur effectivement utilisé."""
+        choice = self.config.get("engine") or "auto"
+        if choice != "auto":
+            return choice
+        if self.config.api_key:
+            return "claude"
+        return "ollama" if local_ai.is_running() else "demo"
 
-        model = cfg.get("model") or "claude-opus-5-5"
-        system = SYSTEM_PROMPT.format(
+    def _system_prompt(self) -> str:
+        cfg = self.config
+        return SYSTEM_PROMPT.format(
             name=cfg.get("assistant_name") or "Celia",
             user=cfg.get("user_name") or "l'utilisateur",
             now=_now_fr(),
             iso=datetime.date.today().isoformat(),
             memory=self.memory.context_summary() or "(vide pour l'instant)",
         )
+
+    def ask(self, question: str) -> str:
+        if time.time() - self.last_exchange > FORGET_AFTER_SECONDS:
+            self.history = []
+        engine = self.engine()
+        if engine == "demo":
+            return self._ask_demo(question)  # rien à mémoriser : pas de vraie conversation
+        answer = self._ask_ollama(question) if engine == "ollama" else self._ask_claude(question)
+        if answer is None:
+            return self._last_error
+        answer = clean_for_speech(answer) or "Je n'ai pas de réponse à cela."
+        # On ne garde que le texte dans la mémoire : simple, léger et robuste.
+        self.history += [{"role": "user", "content": question},
+                         {"role": "assistant", "content": answer}]
+        self.history = self.history[-MAX_HISTORY_MESSAGES:]
+        self.last_exchange = time.time()
+        try:
+            self.memory.log_exchange(question, answer)
+        except OSError:
+            pass
+        return answer
+
+    def _fail(self, message):
+        self._last_error = message
+        return None
+
+    # ------------------------------------------------------------------ #
+    def _ask_claude(self, question):
+        cfg = self.config
+        if not cfg.api_key:
+            return self._fail("Je n'ai pas de clé API Anthropic. Ajoutez-la dans les réglages, "
+                              "ou choisissez un moteur gratuit.")
+        model = cfg.get("model") or "claude-opus-5-5"
+        system = self._system_prompt()
         params = dict(
             model=model,
             max_tokens=16000,
@@ -120,7 +171,7 @@ class Brain:
                 else:
                     resp = client.messages.create(messages=messages, **params)
                 if resp.stop_reason == "refusal":
-                    return "Désolée, je ne peux pas répondre à cette demande."
+                    return self._fail("Désolée, je ne peux pas répondre à cette demande.")
                 parts += [b.text for b in resp.content if b.type == "text"]
                 if resp.stop_reason == "tool_use":
                     # Claude utilise la mémoire : on exécute ses outils et on lui renvoie les résultats.
@@ -139,24 +190,59 @@ class Brain:
                 # Recherche web longue : on relance pour laisser Claude terminer.
                 messages = messages + [{"role": "assistant", "content": resp.content}]
         except anthropic.AuthenticationError:
-            return "Ma clé API semble invalide. Vérifiez-la dans les réglages."
+            return self._fail("Ma clé API semble invalide. Vérifiez-la dans les réglages.")
         except anthropic.PermissionDeniedError:
-            return "Cette clé API n'a pas accès à ce modèle. Essayez un autre modèle dans les réglages."
+            return self._fail("Cette clé API n'a pas accès à ce modèle. Essayez un autre modèle dans les réglages.")
         except anthropic.RateLimitError:
-            return "Je reçois trop de demandes en ce moment. Réessayez dans quelques instants."
+            return self._fail("Je reçois trop de demandes en ce moment. Réessayez dans quelques instants.")
         except anthropic.APIConnectionError:
-            return "Je n'arrive pas à me connecter à Internet. Vérifiez votre connexion."
+            return self._fail("Je n'arrive pas à me connecter à Internet. Vérifiez votre connexion.")
+        except anthropic.BadRequestError as e:
+            if "credit" in str(e).lower():
+                return self._fail("Le crédit de votre compte Anthropic est épuisé. Rechargez-le sur la console "
+                                  "Anthropic, ou passez sur un moteur gratuit dans les réglages.")
+            return self._fail("Ma demande a été refusée par le serveur. Réessayez autrement.")
         except anthropic.APIStatusError as e:
-            return f"Une erreur est survenue côté serveur, code {e.status_code}. Réessayez dans un instant."
+            return self._fail(f"Une erreur est survenue côté serveur, code {e.status_code}. "
+                              "Réessayez dans un instant.")
+        return " ".join(parts)
 
-        answer = clean_for_speech(" ".join(parts)) or "Je n'ai pas de réponse à cela."
-        # On ne garde que le texte dans la mémoire : simple, léger et robuste.
-        self.history += [{"role": "user", "content": question},
-                         {"role": "assistant", "content": answer}]
-        self.history = self.history[-MAX_HISTORY_MESSAGES:]
-        self.last_exchange = time.time()
+    # ------------------------------------------------------------------ #
+    def _ask_ollama(self, question):
+        model = self.config.get("ollama_model") or local_ai.DEFAULT_MODEL
+        if not local_ai.is_running():
+            return self._fail("L'IA gratuite Ollama n'est pas lancée. Ouvrez l'application Ollama, "
+                              "ou installez-la depuis ollama.com.")
+        if not local_ai.has_model(model):
+            return self._fail("L'IA gratuite est encore en cours d'installation. Réessayez dans quelques minutes.")
         try:
-            self.memory.log_exchange(question, answer)
-        except OSError:
-            pass
-        return answer
+            return local_ai.chat(model, self._system_prompt(), self.history, question, TOOLS,
+                                 lambda name, args: execute(self.memory, self.config, name, args))
+        except Exception as e:
+            return self._fail(f"L'IA gratuite a rencontré un problème : {e}")
+
+    # ------------------------------------------------------------------ #
+    def _ask_demo(self, question):
+        """Mode test sans IA : quelques réponses locales pour vérifier micro, voix et planning."""
+        from .memory import fr_date
+        q = re.sub(r"[^a-z0-9 ]", " ", question.lower().replace("é", "e").replace("è", "e")
+                   .replace("ê", "e").replace("à", "a").replace("ç", "c"))
+        today = datetime.date.today()
+        if "heure" in q:
+            n = datetime.datetime.now()
+            return f"Il est {n.hour} heures {n.minute:02d}."
+        if "date" in q or "quel jour" in q or "on est quel" in q:
+            return f"Nous sommes {fr_date(today, today - datetime.timedelta(days=7))} {today.year}."
+        if "demain" in q and ("planning" in q or "faire" in q or "prevu" in q or "programme" in q):
+            tasks = self.memory.list_tasks(today + datetime.timedelta(days=1),
+                                           today + datetime.timedelta(days=1), include_undated=False)
+            if not tasks:
+                return "Rien n'est prévu pour demain."
+            return "Demain : " + ", ".join(t["title"] for t in tasks) + "."
+        if any(w in q for w in ("planning", "faire", "prevu", "programme", "agenda", "taches")):
+            return self.memory.briefing(self.config.get("user_name", "")).replace("Bonjour", "Alors", 1)
+        if "bonjour" in q or "salut" in q or "coucou" in q:
+            return "Bonjour ! Je t'entends bien. Je suis en mode démo pour l'instant."
+        return ("Je t'ai bien entendu ! Je suis en mode démo gratuit : je sais donner l'heure, la date et "
+                "ton planning. Pour de vraies conversations, installe l'IA gratuite Ollama, ou ajoute "
+                "une clé Claude dans mes réglages.")

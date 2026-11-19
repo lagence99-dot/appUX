@@ -10,6 +10,8 @@ DEFAULTS = {
     "assistant_name": "Celia",      # prénom pour l'appeler (mot de réveil)
     "user_name": "",                # votre prénom (facultatif)
     "api_key": "",                  # clé API Anthropic (ou variable ANTHROPIC_API_KEY)
+    "engine": "auto",               # auto | claude | ollama (gratuit, local) | demo (test sans IA)
+    "ollama_model": "qwen2.5:7b",   # IA gratuite ; « qwen2.5:3b » pour les Mac avec 8 Go de mémoire
     "model": "claude-opus-5-5",
     "effort": "low",                # low = réponses rapides, idéal pour la voix
     "web_search": True,             # recherche web pour l'actualité, la météo...

@@ -25,6 +25,23 @@ arrière-plan, et vous l'appelez par son prénom :
 - Vous pouvez aussi **écrire** vos questions dans la fenêtre.
 - Démarrage automatique à l'ouverture de session (option dans les Réglages).
 
+## Tester gratuitement, sans crédit
+
+Celia fonctionne **sans clé API et sans payer**, pour les tests. Le moteur se choisit dans les
+Réglages (*Moteur d'intelligence*) ; en mode **Automatique**, elle utilise Claude si une clé est
+saisie, sinon un mode gratuit :
+
+- **Démo** (rien à installer) : elle donne l'heure, la date et votre planning. Parfait pour vérifier
+  le micro, la reconnaissance du prénom, la voix, le planning et les rappels.
+- **Ollama** (IA gratuite sur votre ordinateur) : de vraies conversations, et la gestion du planning,
+  de la mémoire et des projets. Moins forte que Claude, sans recherche web, mais gratuite et privée.
+  1. Téléchargez Ollama sur <https://ollama.com/download> et ouvrez l'application.
+  2. Relancez Celia : elle télécharge toute seule son IA (`qwen2.5:7b`, environ 4,7 Go, une seule fois).
+     Sur un Mac avec 8 Go de mémoire, choisissez plutôt `qwen2.5:3b` dans les Réglages.
+  Conseillé : un Mac avec puce Apple (M1 ou plus récent).
+
+Le jour où vous ajoutez une clé Claude, Celia passe automatiquement sur Claude.
+
 ## Mémoire permanente, planning et projets
 
 Celia garde en mémoire, **sur votre ordinateur**, tout ce que vous organisez avec elle,
@@ -132,7 +149,8 @@ choisissez Haiku 5.5 dans les Réglages.
 ```
 Celia.pyw            lanceur (sans fenêtre de console)
 celia/app.py         interface, bouton ON/OFF, icône de notification, logique du mot de réveil
-celia/brain.py       appels à Claude (API Anthropic), boucle d'outils, recherche web
+celia/brain.py       choix du moteur, appels à Claude (API Anthropic), boucle d'outils, mode démo
+celia/local_ai.py    IA gratuite locale via Ollama
 celia/memory.py      mémoire permanente : tâches, rappels, notes, projets, journal
 celia/tools.py       outils que Claude utilise pour gérer la mémoire et les projets
 celia/voice.py       micro + reconnaissance Vosk hors-ligne, synthèse vocale, détection du prénom

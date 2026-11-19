@@ -9,7 +9,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from . import system
-from .brain import EFFORTS, MODELS, Brain
+from . import local_ai
+from .brain import EFFORTS, ENGINES, MODELS, Brain
 from .config import Config
 from .memory import NOTE_KINDS, Memory, fr_date
 from .voice import Speaker, beep, ensure_vosk_model, find_wake_word, normalize, open_voice_settings
@@ -31,6 +32,8 @@ ON, OFF, ACCENT = "#2ecc71", "#5a5a66", "#7c5cff"
 class CeliaApp:
     def __init__(self, start_toggled_off=False):
         self.cfg = Config()
+        first_launch = not self.cfg.path.exists()
+        self.engine_note = ""
         self.memory = Memory()
         self.brain = Brain(self.cfg, self.memory)
         self.planning_win = None
@@ -67,8 +70,9 @@ class CeliaApp:
         self.root.after(2500, self._morning_briefing)
         self.root.after(4000, self._maybe_suggest_premium_voice)
         self.root.after(15000, self._check_reminders)
-        if not self.cfg.api_key:
+        if first_launch:
             self.root.after(600, lambda: self.open_settings(first_run=True))
+        self._prepare_engine()
 
     # ------------------------------------------------------------------ #
     @property
@@ -183,9 +187,35 @@ class CeliaApp:
         if self.listener is None:
             return
         if self.listener.active:
-            self.set_status(f"À l'écoute — dites « {self.name} » suivi de votre question")
+            self.set_status(f"À l'écoute — dites « {self.name} » suivi de votre question{self.engine_note}")
         else:
-            self.set_status("Écoute désactivée (micro coupé)")
+            self.set_status("Écoute désactivée (micro coupé)" + self.engine_note)
+
+    def _prepare_engine(self):
+        """Détermine le moteur et installe l'IA gratuite si besoin (en arrière-plan)."""
+        def work():
+            engine = self.brain.engine()
+            notes = {"claude": "", "ollama": "\n(IA gratuite Ollama)", "demo": "\n(mode démo gratuit)"}
+            self.engine_note = notes.get(engine, "")
+            self.ui(self.idle_status)
+            if engine == "ollama":
+                model = self.cfg.get("ollama_model") or local_ai.DEFAULT_MODEL
+                if not local_ai.is_running():
+                    self.ui(self.add_log, "info", "L'IA gratuite Ollama n'est pas lancée. Installez-la depuis "
+                                                  "ollama.com puis ouvrez l'application Ollama.")
+                elif not local_ai.has_model(model):
+                    try:
+                        local_ai.pull(model, lambda m: self.ui(self.set_status, m))
+                        self.ui(self.add_log, "info", f"IA gratuite « {model} » installée.")
+                    except Exception as e:
+                        self.ui(self.add_log, "info", f"Installation de l'IA gratuite impossible : {e}")
+                    self.ui(self.idle_status)
+            elif engine == "demo" and self.cfg.get("engine") in ("auto", "demo"):
+                self.ui(self.add_log, "info",
+                        "Mode démo gratuit : je donne l'heure, la date et ton planning, pour tester le micro "
+                        "et la voix. Pour de vraies conversations gratuites, installe Ollama (ollama.com) ; "
+                        "pour les meilleures réponses, ajoute une clé Claude dans les Réglages.")
+        threading.Thread(target=work, daemon=True).start()
 
     # ------------------------------------------------------------------ #
     #  Voix
@@ -361,8 +391,9 @@ class CeliaApp:
             r += 1
 
         if first_run:
-            tk.Label(win, text="Bienvenue ! Pour que je puisse répondre, collez votre clé API\n"
-                               "Anthropic (console.anthropic.com → API Keys).",
+            tk.Label(win, text="Bienvenue ! Sans clé, je fonctionne gratuitement pour les tests "
+                               "(mode démo, ou IA gratuite Ollama si elle est installée).\n"
+                               "Plus tard, ajoutez une clé Claude pour mes meilleures réponses.",
                      bg=BG, fg=ACCENT, font=(FONT, 10), justify="left").grid(row=r, column=0, columnspan=2,
                                                                              sticky="w")
             r += 1
@@ -375,6 +406,15 @@ class CeliaApp:
         v_user = tk.StringVar(value=self.cfg["user_name"])
         label("Votre prénom (facultatif)")
         place(tk.Entry(win, textvariable=v_user, width=44))
+
+        v_engine = tk.StringVar(value=ENGINES.get(self.cfg["engine"], ENGINES["auto"]))
+        label("Moteur d'intelligence", "Gratuit pour tester : Démo (sans IA) ou Ollama (IA gratuite à installer "
+                                       "depuis ollama.com). Claude donne les meilleures réponses.")
+        place(ttk.Combobox(win, textvariable=v_engine, values=list(ENGINES.values()), state="readonly", width=42))
+
+        v_ollama = tk.StringVar(value=self.cfg["ollama_model"])
+        label("Modèle Ollama (IA gratuite)", "qwen2.5:7b conseillé ; qwen2.5:3b si votre Mac a 8 Go de mémoire.")
+        place(tk.Entry(win, textvariable=v_ollama, width=44))
 
         v_key = tk.StringVar(value=self.cfg["api_key"])
         label("Clé API Anthropic", "Stockée uniquement sur cet ordinateur.")
@@ -468,6 +508,8 @@ class CeliaApp:
             self.cfg["user_name"] = v_user.get().strip()
             self.cfg["api_key"] = v_key.get().strip()
             self.cfg["model"] = next((k for k, v in MODELS.items() if v == v_model.get()), "claude-opus-5-5")
+            self.cfg["engine"] = next((k for k, v in ENGINES.items() if v == v_engine.get()), "auto")
+            self.cfg["ollama_model"] = v_ollama.get().strip() or local_ai.DEFAULT_MODEL
             self.cfg["effort"] = v_effort.get()
             self.cfg["web_search"] = v_web.get()
             self.cfg["voice_id"] = next((i for i, n in voices if n == v_voice.get()), "")
@@ -484,6 +526,7 @@ class CeliaApp:
                 except Exception as e:
                     messagebox.showerror("Démarrage automatique", str(e), parent=win)
             self.cfg.save()
+            self._prepare_engine()
             if self.speaker:
                 self.speaker.configure(self.cfg["voice_id"], self.cfg["speech_rate"])
             self.title_lbl.config(text=self.name)
