@@ -19,7 +19,7 @@ arrière-plan, et vous l'appelez par son prénom :
 - **Bouton ON/OFF** :
   - le gros bouton rond dans la fenêtre ;
   - le raccourci **« Celia ON-OFF »** sur le bureau (un double-clic coupe ou rallume le micro) ;
-  - l'icône près de l'horloge (clic droit → *Écoute active*).
+  - sur Windows, l'icône près de l'horloge (clic droit → *Écoute active*).
 - Commandes vocales : « Celia stop » (elle se tait), « Celia, mets-toi en veille »,
   « Celia, nouvelle conversation ».
 - Vous pouvez aussi **écrire** vos questions dans la fenêtre.
@@ -41,46 +41,68 @@ même après un redémarrage :
 - **Retour en arrière à tout moment** : « qu'avait-on décidé pour le logo ? »,
   « on en était où sur l'appli resto ? ». Chaque conversation est archivée dans un journal.
 - **Projets** : « Celia, crée un nouveau projet pour une application de réservation ».
-  Elle crée un dossier dans `Documents\Projets` avec une fiche `PROJET.md` (objectif, premières
+  Elle crée un dossier dans `Documents/Projets` avec une fiche `PROJET.md` (objectif, premières
   étapes), et ajoute ces étapes à votre planning.
 
 Le bouton **📋 Planning & mémoire** affiche tout cela : tâches (cocher, supprimer, ajouter),
 souvenirs (les effacer), projets (ouvrir leur dossier).
 
-Les données sont dans `%APPDATA%\Celia\` : `memoire.json` (planning, notes, projets) et
+Les données sont dans `~/Library/Application Support/Celia/` sur Mac (`%APPDATA%\Celia\` sur Windows) : `memoire.json` (planning, notes, projets) et
 `journal.jsonl` (historique des conversations). Rien n'est stocké en ligne.
 
-## Installation (Windows)
+## Installation sur Mac
+
+1. Installez **Python 3.10 ou plus récent** depuis <https://www.python.org/downloads/macos/>
+   (« macOS 64-bit universal2 installer »). Si vous l'oubliez, l'installateur ouvre la page pour vous.
+2. Téléchargez ce dossier (bouton *Code → Download ZIP* sur GitHub) et décompressez-le dans un
+   endroit stable, par exemple `Documents/Celia`.
+3. Double-cliquez sur **`INSTALLER_MAC.command`**. Si macOS le bloque : clic droit → *Ouvrir* →
+   *Ouvrir*.
+4. Deux applications sont créées, sur le **Bureau** et dans le dossier **Applications** de votre
+   compte (donc trouvables avec Spotlight) : **Celia** et **Celia ON-OFF**.
+5. Au premier lancement :
+   - macOS demande l'**accès au micro** : cliquez sur *Autoriser* (modifiable ensuite dans
+     *Réglages Système → Confidentialité et sécurité → Micro*) ;
+   - Celia vous demande votre **clé API Anthropic** (à créer sur <https://console.anthropic.com>,
+     rubrique *API Keys*) ;
+   - elle télécharge son modèle de reconnaissance vocale français (environ 40 Mo, une seule fois).
+
+### Une belle voix sur Mac
+
+Celia utilise les voix du Mac. Les voix **Premium** et **Améliorée** sont bien plus naturelles que
+les voix de base, mais il faut les télécharger une fois :
+
+*Réglages Système → Accessibilité → Contenu énoncé → Voix du système → Gérer les voix… →
+Français (France)*, puis téléchargez par exemple **Audrey (Premium)**, **Aurélie (Améliorée)**
+ou **Thomas (Améliorée)**.
+
+Celia choisit automatiquement la meilleure voix française installée. Vous pouvez aussi la
+choisir dans ses Réglages. Les voix « Siri » ne sont pas accessibles aux applications.
+
+## Installation sur Windows
 
 1. Installez **Python 3.10 ou plus récent** depuis <https://www.python.org/downloads/>
    en cochant **« Add python.exe to PATH »**.
-2. Téléchargez ce dossier (bouton *Code → Download ZIP* sur GitHub) et décompressez-le
-   dans un endroit stable, par exemple `Documents\Celia`.
-3. Double-cliquez sur **`INSTALLER_WINDOWS.bat`**.
-   Deux raccourcis apparaissent sur le bureau : **Celia** et **Celia ON-OFF**.
-4. Au premier lancement, Celia :
-   - vous demande votre **clé API Anthropic** (à créer sur <https://console.anthropic.com>,
-     rubrique *API Keys*) ;
-   - télécharge son modèle de reconnaissance vocale français (environ 40 Mo, une seule fois).
+2. Décompressez ce dossier dans un endroit stable, puis double-cliquez sur
+   **`INSTALLER_WINDOWS.bat`**. Deux raccourcis apparaissent sur le bureau : **Celia** et
+   **Celia ON-OFF**.
+3. Pour une voix française : *Paramètres → Heure et langue → Voix*, ajoutez une voix française,
+   puis choisissez-la dans les Réglages de Celia.
 
-> Pour une voix française sous Windows : *Paramètres → Heure et langue → Voix* et ajoutez
-> une voix française (par exemple « Microsoft Hortense » ou « Julie »). Choisissez-la ensuite
-> dans les Réglages de Celia.
+### Linux
 
-### macOS / Linux
-
-Lancez `./install.sh`. Sous Linux, installez d'abord `espeak-ng` et `libportaudio2`.
+Lancez `./install.sh` après avoir installé `python3-tk`, `espeak-ng` et `libportaudio2`.
 
 ## Utilisation au quotidien
 
-| Action | Comment |
-|---|---|
-| Démarrer le matin | Double-clic sur **Celia** (ou démarrage automatique) |
-| Poser une question | « Celia, … » |
-| Couper / rallumer le micro | **Celia ON-OFF** sur le bureau, ou le bouton rond |
-| La faire taire | « Celia stop » ou le bouton *Interrompre* |
-| Fermer la fenêtre | La croix la cache : Celia reste active près de l'horloge |
-| Quitter complètement | Clic droit sur l'icône près de l'horloge → *Quitter* |
+| Action | Sur Mac | Sur Windows |
+|---|---|---|
+| Démarrer le matin | **Celia** (Bureau, Spotlight) ou démarrage automatique | Raccourci **Celia** ou démarrage automatique |
+| Poser une question | « Celia, … » | « Celia, … » |
+| Couper / rallumer le micro | **Celia ON-OFF**, ou le bouton rond | **Celia ON-OFF**, le bouton rond, ou l'icône près de l'horloge |
+| La faire taire | « Celia stop » ou *Interrompre* | « Celia stop » ou *Interrompre* |
+| Fermer la fenêtre | Le bouton rouge la ferme, Celia reste dans le Dock (clic sur l'icône pour la rouvrir) | La croix la cache, Celia reste près de l'horloge |
+| Quitter complètement | **Cmd + Q** | Clic droit sur l'icône près de l'horloge → *Quitter* |
 
 ## Réglages
 
@@ -92,7 +114,7 @@ Lancez `./install.sh`. Sous Linux, installez d'abord `espeak-ng` et `libportaudi
 - **Exigence de reconnaissance du prénom** : baissez-la si Celia ne vous entend pas,
   montez-la si elle se déclenche toute seule.
 
-Les réglages sont dans `%APPDATA%\Celia\config.json`. La clé API reste uniquement sur votre PC.
+Les réglages sont dans `config.json`, dans ce même dossier. La clé API reste uniquement sur votre ordinateur.
 
 ## Coût
 

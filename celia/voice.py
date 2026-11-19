@@ -169,8 +169,8 @@ class Listener:
 # --------------------------------------------------------------------------- #
 #  Synthèse vocale
 # --------------------------------------------------------------------------- #
-class Speaker:
-    """Synthèse vocale hors-ligne (voix du système), dans son propre fil d'exécution."""
+class SystemSpeaker:
+    """Synthèse vocale hors-ligne (voix du système, Windows / Linux), dans son propre fil d'exécution."""
 
     def __init__(self, voice_id: str = "", rate: int = 185):
         self._q = queue.Queue()
@@ -260,9 +260,92 @@ class Speaker:
         return None
 
 
+class MacSpeaker:
+    """Synthèse vocale macOS avec la commande « say » : accès à toutes les voix du Mac,
+    y compris les voix « Premium » et « Améliorée » de haute qualité."""
+
+    def __init__(self, voice_id: str = "", rate: int = 185):
+        import subprocess
+        self._sp = subprocess
+        self._q = queue.Queue()
+        self._proc = None
+        self.speaking = False
+        self.voices = self._list_voices()          # [(nom, "nom — langue")]
+        self._voice = voice_id or self._best_french()
+        self._rate = rate
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def _list_voices(self):
+        try:
+            out = self._sp.run(["say", "-v", "?"], capture_output=True, text=True, timeout=10).stdout
+        except Exception:
+            return []
+        voices = []
+        for line in out.splitlines():
+            m = re.match(r"^(.+?)\s+([a-z]{2,3}_[A-Za-z0-9]+)\s+#", line)
+            if m:
+                voices.append((m.group(1).strip(), m.group(2)))
+        # les voix françaises d'abord
+        voices.sort(key=lambda v: (not v[1].startswith("fr"), v[0].lower()))
+        return [(name, f"{name} — {lang}") for name, lang in voices]
+
+    def _best_french(self):
+        names = [v[0] for v in self.voices if "— fr" in v[1]]
+        for wanted in ("premium", "améliorée", "enhanced", "amélioré"):
+            for n in names:
+                if wanted in n.lower() and "fr_FR" in dict(self.voices)[n]:
+                    return n
+        for n in names:
+            if "fr_FR" in dict(self.voices)[n]:
+                return n
+        return names[0] if names else ""
+
+    def configure(self, voice_id: str = None, rate: int = None):
+        if voice_id is not None:
+            self._voice = voice_id or self._best_french()
+        if rate:
+            self._rate = rate
+
+    def say(self, text: str, on_done=None):
+        self._q.put((text, on_done))
+
+    def interrupt(self):
+        while True:
+            try:
+                self._q.get_nowait()
+            except queue.Empty:
+                break
+        p = self._proc
+        if p and p.poll() is None:
+            p.terminate()
+
+    def _loop(self):
+        while True:
+            text, on_done = self._q.get()
+            self.speaking = True
+            try:
+                cmd = ["say", "-r", str(int(self._rate))]
+                if self._voice:
+                    cmd += ["-v", self._voice]
+                self._proc = self._sp.Popen(cmd + ["--", text])
+                self._proc.wait()
+            except Exception as e:
+                print("Erreur de synthèse vocale :", e)
+            finally:
+                self.speaking = False
+                if on_done:
+                    on_done()
+
+
+Speaker = MacSpeaker if sys.platform == "darwin" else SystemSpeaker
+
+
 def beep():
     try:
-        if sys.platform == "win32":
+        if sys.platform == "darwin":
+            import subprocess
+            subprocess.Popen(["afplay", "/System/Library/Sounds/Tink.aiff"])
+        elif sys.platform == "win32":
             import winsound
             winsound.Beep(880, 120)
         else:

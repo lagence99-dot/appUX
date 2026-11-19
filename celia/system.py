@@ -89,11 +89,10 @@ def install_shortcuts() -> list:
             _win_shortcut(lnk, gui_python(), f'"{LAUNCHER}" {args}'.strip(), ico, desc)
             created.append(lnk)
     elif sys.platform == "darwin":
-        for name, args, _ in items:
-            f = desk / f"{name}.command"
-            f.write_text(f'#!/bin/sh\n"{sys.executable}" "{LAUNCHER}" {args} >/dev/null 2>&1 &\n')
-            f.chmod(0o755)
-            created.append(f)
+        apps_dir = Path.home() / "Applications"
+        for name, args, desc in items:
+            for folder in (desk, apps_dir):
+                created.append(_mac_app(folder / f"{name}.app", args, desc))
     else:
         ico = app_dir() / "celia.png"
         make_icon(True, 128).save(ico)
@@ -105,6 +104,33 @@ def install_shortcuts() -> list:
             f.chmod(0o755)
             created.append(f)
     return created
+
+
+def _mac_app(app: Path, args: str, description: str) -> Path:
+    """Crée une petite application macOS (.app) qui lance Celia."""
+    import plistlib
+    import shutil
+    shutil.rmtree(app, ignore_errors=True)
+    macos = app / "Contents" / "MacOS"
+    res = app / "Contents" / "Resources"
+    macos.mkdir(parents=True)
+    res.mkdir(parents=True)
+    script = macos / "celia"
+    script.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{LAUNCHER}" {args}\n')
+    script.chmod(0o755)
+    make_icon(True, 512).save(res / "celia.icns")
+    ident = "com.celia." + ("toggle" if args else "assistant")
+    with open(app / "Contents" / "Info.plist", "wb") as f:
+        plistlib.dump({
+            "CFBundleName": app.stem, "CFBundleDisplayName": app.stem,
+            "CFBundleIdentifier": ident, "CFBundleExecutable": "celia",
+            "CFBundleIconFile": "celia.icns", "CFBundlePackageType": "APPL",
+            "CFBundleShortVersionString": "1.0", "LSMinimumSystemVersion": "10.13",
+            "NSMicrophoneUsageDescription": "Celia écoute son prénom pour vous répondre. "
+                                            "La reconnaissance se fait sur votre Mac.",
+            "NSHighResolutionCapable": True, "CFBundleGetInfoString": description,
+        }, f)
+    return app
 
 
 # --------------------------------------------------------------------------- #

@@ -1,6 +1,7 @@
 anthropic>=2.10
 vosk>=0.3.45
 sounddevice>=0.4.6
-pyttsx3>=2.90
-pystray>=0.19
 Pillow>=10.0
+# Windows / Linux uniquement (sur Mac, Celia utilise la commande « say » et le Dock)
+pyttsx3>=2.90; sys_platform != "darwin"
+pystray>=0.19; sys_platform != "darwin"

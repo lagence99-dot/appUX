@@ -20,6 +20,8 @@ STOP_WORDS = {"stop", "arrete", "arrete toi", "tais toi", "silence", "chut", "ca
 SLEEP_RE = re.compile(r"\b(mets toi en (veille|pause)|desactive toi|va dormir)\b")
 RESET_RE = re.compile(r"\b(nouvelle conversation|oublie tout|on recommence)\b")
 
+FONT = "Helvetica Neue" if sys.platform == "darwin" else "Segoe UI"
+IS_MAC = sys.platform == "darwin"
 BG, PANEL, FG, MUTED = "#15151c", "#20202a", "#ececf1", "#9a9aab"
 ON, OFF, ACCENT = "#2ecc71", "#5a5a66", "#7c5cff"
 
@@ -50,6 +52,10 @@ class CeliaApp:
         except Exception:
             pass
         self.root.protocol("WM_DELETE_WINDOW", self.hide_window)
+        if IS_MAC:
+            # Cmd+Q quitte, un clic sur l'icône du Dock rouvre la fenêtre.
+            self.root.createcommand("tk::mac::Quit", self.quit)
+            self.root.createcommand("tk::mac::ReopenApplication", self.show_window)
         self._build_ui()
         self.root.after(100, self._pump)
 
@@ -93,7 +99,7 @@ class CeliaApp:
         style.map("TCombobox", fieldbackground=[("readonly", PANEL)], foreground=[("readonly", FG)],
                   selectbackground=[("readonly", PANEL)], selectforeground=[("readonly", FG)])
 
-        self.title_lbl = tk.Label(self.root, text=self.name, font=("Segoe UI", 26, "bold"),
+        self.title_lbl = tk.Label(self.root, text=self.name, font=(FONT, 26, "bold"),
                                   bg=BG, fg=FG)
         self.title_lbl.pack(pady=(18, 0))
 
@@ -103,29 +109,29 @@ class CeliaApp:
         self.canvas.bind("<Button-1>", lambda e: self.toggle())
         self._draw_button()
 
-        self.status_lbl = tk.Label(self.root, text="Démarrage…", font=("Segoe UI", 11),
+        self.status_lbl = tk.Label(self.root, text="Démarrage…", font=(FONT, 11),
                                    bg=BG, fg=MUTED, wraplength=400)
         self.status_lbl.pack()
-        self.heard_lbl = tk.Label(self.root, text="", font=("Segoe UI", 9, "italic"),
+        self.heard_lbl = tk.Label(self.root, text="", font=(FONT, 9, "italic"),
                                   bg=BG, fg=MUTED, wraplength=400)
         self.heard_lbl.pack(pady=(2, 8))
 
         frame = tk.Frame(self.root, bg=BG)
         frame.pack(fill="both", expand=True, padx=14)
         self.log = tk.Text(frame, bg=PANEL, fg=FG, relief="flat", wrap="word",
-                           font=("Segoe UI", 10), padx=10, pady=8, state="disabled")
+                           font=(FONT, 10), padx=10, pady=8, state="disabled")
         sb = tk.Scrollbar(frame, command=self.log.yview)
         self.log.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.log.pack(side="left", fill="both", expand=True)
-        self.log.tag_configure("you", foreground="#8fd3ff", font=("Segoe UI", 10, "bold"))
-        self.log.tag_configure("celia", foreground="#c9b8ff", font=("Segoe UI", 10, "bold"))
-        self.log.tag_configure("info", foreground=MUTED, font=("Segoe UI", 9, "italic"))
+        self.log.tag_configure("you", foreground="#8fd3ff", font=(FONT, 10, "bold"))
+        self.log.tag_configure("celia", foreground="#c9b8ff", font=(FONT, 10, "bold"))
+        self.log.tag_configure("info", foreground=MUTED, font=(FONT, 9, "italic"))
 
         entry_row = tk.Frame(self.root, bg=BG)
         entry_row.pack(fill="x", padx=14, pady=8)
         self.entry = tk.Entry(entry_row, bg=PANEL, fg=FG, insertbackground=FG, relief="flat",
-                              font=("Segoe UI", 10))
+                              font=(FONT, 10))
         self.entry.pack(side="left", fill="x", expand=True, ipady=6)
         self.entry.bind("<Return>", lambda e: self._send_typed())
         self._btn(entry_row, "Envoyer", self._send_typed).pack(side="left", padx=(6, 0))
@@ -142,7 +148,7 @@ class CeliaApp:
     def _btn(self, parent, text, cmd):
         return tk.Button(parent, text=text, command=cmd, bg=PANEL, fg=FG, relief="flat",
                          activebackground=ACCENT, activeforeground="white",
-                         font=("Segoe UI", 9), padx=10, pady=5, cursor="hand2")
+                         font=(FONT, 9), padx=10, pady=5, cursor="hand2")
 
     def _draw_button(self):
         c = self.canvas
@@ -151,9 +157,9 @@ class CeliaApp:
         color = ON if on else OFF
         c.create_oval(8, 8, 142, 142, fill=color, outline="")
         c.create_oval(22, 22, 128, 128, outline="white", width=3)
-        c.create_text(75, 66, text="ON" if on else "OFF", fill="white", font=("Segoe UI", 22, "bold"))
+        c.create_text(75, 66, text="ON" if on else "OFF", fill="white", font=(FONT, 22, "bold"))
         c.create_text(75, 96, text="cliquer pour " + ("couper" if on else "activer"),
-                      fill="white", font=("Segoe UI", 8))
+                      fill="white", font=(FONT, 8))
 
     def set_status(self, text):
         self.status_lbl.config(text=text)
@@ -335,11 +341,11 @@ class CeliaApp:
 
         def label(text, hint=None):
             nonlocal r
-            tk.Label(win, text=text, bg=BG, fg=FG, font=("Segoe UI", 10, "bold")).grid(
+            tk.Label(win, text=text, bg=BG, fg=FG, font=(FONT, 10, "bold")).grid(
                 row=r, column=0, sticky="w", pady=(8, 0))
             r += 1
             if hint:
-                tk.Label(win, text=hint, bg=BG, fg=MUTED, font=("Segoe UI", 8), wraplength=360,
+                tk.Label(win, text=hint, bg=BG, fg=MUTED, font=(FONT, 8), wraplength=360,
                          justify="left").grid(row=r, column=0, sticky="w")
                 r += 1
 
@@ -351,7 +357,7 @@ class CeliaApp:
         if first_run:
             tk.Label(win, text="Bienvenue ! Pour que je puisse répondre, collez votre clé API\n"
                                "Anthropic (console.anthropic.com → API Keys).",
-                     bg=BG, fg=ACCENT, font=("Segoe UI", 10), justify="left").grid(row=r, column=0, sticky="w")
+                     bg=BG, fg=ACCENT, font=(FONT, 10), justify="left").grid(row=r, column=0, sticky="w")
             r += 1
 
         v_name = tk.StringVar(value=self.cfg["assistant_name"])
@@ -449,7 +455,7 @@ class CeliaApp:
                     messagebox.showerror("Démarrage automatique", str(e), parent=win)
             self.cfg.save()
             if self.speaker:
-                self.speaker.configure(self.cfg["voice_id"] or None, self.cfg["speech_rate"])
+                self.speaker.configure(self.cfg["voice_id"], self.cfg["speech_rate"])
             self.title_lbl.config(text=self.name)
             self.root.title(self.name)
             self.idle_status()
@@ -461,13 +467,15 @@ class CeliaApp:
         btns.grid(row=r, column=0, sticky="e", pady=(14, 0))
         self._btn(btns, "Annuler", win.destroy).pack(side="left", padx=6)
         tk.Button(btns, text="Enregistrer", command=save, bg=ACCENT, fg="white", relief="flat",
-                  font=("Segoe UI", 9, "bold"), padx=14, pady=5).pack(side="left")
+                  font=(FONT, 9, "bold"), padx=14, pady=5).pack(side="left")
         win.grab_set()
 
     # ------------------------------------------------------------------ #
     #  Zone de notification (icône près de l'horloge)
     # ------------------------------------------------------------------ #
     def _start_tray(self):
+        if IS_MAC:
+            return  # sur Mac, Celia vit dans le Dock (pystray et Tk ne peuvent pas cohabiter)
         try:
             import pystray
         except Exception:
@@ -495,8 +503,23 @@ class CeliaApp:
                                      "Clic droit sur mon icône pour me quitter.", self.name)
                 except Exception:
                     pass
+        elif IS_MAC:
+            self.root.withdraw()  # comme les apps Mac : la fenêtre se ferme, Celia reste dans le Dock
         else:
             self.root.iconify()
+
+    def notify(self, title, message):
+        """Notification système (centre de notifications sur Mac, bulle sur Windows)."""
+        try:
+            if IS_MAC:
+                import subprocess
+                subprocess.Popen(["osascript", "-e", "on run argv", "-e",
+                                  "display notification (item 2 of argv) with title (item 1 of argv)",
+                                  "-e", "end run", title, message])
+            elif self.tray is not None:
+                self.tray.notify(message, title)
+        except Exception:
+            pass
 
     def show_window(self):
         self.root.deiconify()
@@ -525,11 +548,7 @@ class CeliaApp:
                     text = f"Petit rappel : {t['title']}."
                     if t.get("project"):
                         text += f" C'est pour le projet {t['project']}."
-                    if self.tray is not None:
-                        try:
-                            self.tray.notify(t["title"], f"{self.name} — rappel")
-                        except Exception:
-                            pass
+                    self.notify(f"{self.name} — rappel", t["title"])
                     self.speak(text)
         finally:
             self.root.after(20000, self._check_reminders)
@@ -592,7 +611,7 @@ class CeliaApp:
         self.pl_new_time.pack(side="left", ipady=4)
         self._btn(add, "+ Ajouter", self._add_task_manual).pack(side="left", padx=(4, 0))
         tk.Label(self.pl_tasks.master, text="Nouvelle tâche  ·  date (AAAA-MM-JJ, vide = sans date)  ·  heure (HH:MM)",
-                 bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(side="bottom", anchor="w", before=add)
+                 bg=BG, fg=MUTED, font=(FONT, 8)).pack(side="bottom", anchor="w", before=add)
 
         # Onglet mémoire
         self.pl_notes, bar = tab("Mémoire", ("Date", "Type", "Projet", "Contenu"), (120, 150, 120, 320))
