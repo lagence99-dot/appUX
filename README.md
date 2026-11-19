@@ -76,8 +76,13 @@ les voix de base, mais il faut les télécharger une fois :
 Français (France)*, puis téléchargez par exemple **Audrey (Premium)**, **Aurélie (Améliorée)**
 ou **Thomas (Améliorée)**.
 
-Celia choisit automatiquement la meilleure voix française installée. Vous pouvez aussi la
-choisir dans ses Réglages. Les voix « Siri » ne sont pas accessibles aux applications.
+Pas besoin de retenir ce chemin : au premier lancement, si aucune voix Premium n'est installée,
+Celia affiche un **guide pas à pas** avec un bouton qui ouvre directement le bon réglage, puis un
+bouton « C'est fait, essayer ma nouvelle voix » qui l'adopte aussitôt.
+
+Celia choisit automatiquement la meilleure voix française installée (Premium d'abord, puis
+Améliorée). Dans ses Réglages, les voix Premium sont marquées d'une ⭐ et le bouton **▶ Écouter**
+permet de les comparer. Les voix « Siri » ne sont pas accessibles aux applications.
 
 ## Installation sur Windows
 

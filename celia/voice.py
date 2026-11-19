@@ -271,6 +271,7 @@ class MacSpeaker:
         self._proc = None
         self.speaking = False
         self.voices = self._list_voices()          # [(nom, "nom — langue")]
+        self._auto = not voice_id
         self._voice = voice_id or self._best_french()
         self._rate = rate
         threading.Thread(target=self._loop, daemon=True).start()
@@ -285,23 +286,42 @@ class MacSpeaker:
             m = re.match(r"^(.+?)\s+([a-z]{2,3}_[A-Za-z0-9]+)\s+#", line)
             if m:
                 voices.append((m.group(1).strip(), m.group(2)))
-        # les voix françaises d'abord
-        voices.sort(key=lambda v: (not v[1].startswith("fr"), v[0].lower()))
-        return [(name, f"{name} — {lang}") for name, lang in voices]
+        # les voix françaises d'abord, et parmi elles les voix Premium / Améliorées
+        voices.sort(key=lambda v: (not v[1].startswith("fr"), -self.quality(v[0]), v[0].lower()))
+        return [(name, ("⭐ " if self.quality(name) and lang.startswith("fr") else "") + f"{name} — {lang}")
+                for name, lang in voices]
+
+    @staticmethod
+    def quality(name: str) -> int:
+        """2 = Premium, 1 = Améliorée, 0 = voix de base."""
+        n = name.lower()
+        if "premium" in n:
+            return 2
+        if "amélioré" in n or "enhanced" in n or "ameliore" in n:
+            return 1
+        return 0
+
+    def refresh(self):
+        """Relit la liste des voix (après le téléchargement d'une nouvelle voix)."""
+        self.voices = self._list_voices()
+        if self._auto:
+            self._voice = self._best_french()
+
+    @property
+    def current_voice(self):
+        return self._voice
+
+    def has_premium_french(self) -> bool:
+        return any(self.quality(n) and "— fr" in label for n, label in self.voices)
 
     def _best_french(self):
-        names = [v[0] for v in self.voices if "— fr" in v[1]]
-        for wanted in ("premium", "améliorée", "enhanced", "amélioré"):
-            for n in names:
-                if wanted in n.lower() and "fr_FR" in dict(self.voices)[n]:
-                    return n
-        for n in names:
-            if "fr_FR" in dict(self.voices)[n]:
-                return n
-        return names[0] if names else ""
+        fr = [(n, label) for n, label in self.voices if "— fr" in label]
+        fr.sort(key=lambda v: (-self.quality(v[0]), "fr_FR" not in v[1]))
+        return fr[0][0] if fr else ""
 
     def configure(self, voice_id: str = None, rate: int = None):
         if voice_id is not None:
+            self._auto = not voice_id
             self._voice = voice_id or self._best_french()
         if rate:
             self._rate = rate
@@ -338,6 +358,19 @@ class MacSpeaker:
 
 
 Speaker = MacSpeaker if sys.platform == "darwin" else SystemSpeaker
+
+
+def open_voice_settings():
+    """Ouvre les réglages macOS où l'on télécharge les voix (Accessibilité → Contenu énoncé)."""
+    import subprocess
+    for url in ("x-apple.systempreferences:com.apple.Accessibility-Settings.extension?SpokenContent",
+                "x-apple.systempreferences:com.apple.preference.universalaccess?SpokenContent"):
+        try:
+            if subprocess.run(["open", url], timeout=10).returncode == 0:
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def beep():

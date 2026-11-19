@@ -22,6 +22,7 @@ DEFAULTS = {
     "listen_on_start": True,        # écoute active dès le lancement
     "morning_briefing": True,       # point du jour au premier lancement de la journée
     "reminders": True,              # rappels vocaux à l'heure des tâches
+    "premium_voice_hint": True,     # Mac : proposer d'installer une voix Premium
     "projects_dir": str(Path.home() / "Documents" / "Projets"),  # dossier des nouveaux projets
 }
 

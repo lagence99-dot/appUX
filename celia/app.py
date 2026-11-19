@@ -12,7 +12,9 @@ from . import system
 from .brain import EFFORTS, MODELS, Brain
 from .config import Config
 from .memory import NOTE_KINDS, Memory, fr_date
-from .voice import Speaker, beep, ensure_vosk_model, find_wake_word, normalize
+from .voice import Speaker, beep, ensure_vosk_model, find_wake_word, normalize, open_voice_settings
+
+VOICE_SAMPLE = "Bonjour ! Je suis {name}. Voici à quoi ressemble ma voix."
 
 FOLLOW_UP_SECONDS = 8   # après « Oui ? », délai pour poser la question
 
@@ -63,6 +65,7 @@ class CeliaApp:
         self._start_tray()
         self.memory.listeners.append(lambda: self.ui(self._refresh_planning))
         self.root.after(2500, self._morning_briefing)
+        self.root.after(4000, self._maybe_suggest_premium_voice)
         self.root.after(15000, self._check_reminders)
         if not self.cfg.api_key:
             self.root.after(600, lambda: self.open_settings(first_run=True))
@@ -337,28 +340,33 @@ class CeliaApp:
         win.configure(bg=BG, padx=16, pady=12)
         win.transient(self.root)
         win.resizable(False, False)
-        r = 0
+        r = col = 0  # deux colonnes : assistante à gauche, voix et confort à droite
+
+        def gap():
+            return (0, 0) if col == 0 else (28, 0)
 
         def label(text, hint=None):
             nonlocal r
             tk.Label(win, text=text, bg=BG, fg=FG, font=(FONT, 10, "bold")).grid(
-                row=r, column=0, sticky="w", pady=(8, 0))
+                row=r, column=col, sticky="w", pady=(8, 0), padx=gap())
             r += 1
             if hint:
                 tk.Label(win, text=hint, bg=BG, fg=MUTED, font=(FONT, 8), wraplength=360,
-                         justify="left").grid(row=r, column=0, sticky="w")
+                         justify="left").grid(row=r, column=col, sticky="w", padx=gap())
                 r += 1
 
         def place(widget):
             nonlocal r
-            widget.grid(row=r, column=0, sticky="we", pady=2)
+            widget.grid(row=r, column=col, sticky="we", pady=2, padx=gap())
             r += 1
 
         if first_run:
             tk.Label(win, text="Bienvenue ! Pour que je puisse répondre, collez votre clé API\n"
                                "Anthropic (console.anthropic.com → API Keys).",
-                     bg=BG, fg=ACCENT, font=(FONT, 10), justify="left").grid(row=r, column=0, sticky="w")
+                     bg=BG, fg=ACCENT, font=(FONT, 10), justify="left").grid(row=r, column=0, columnspan=2,
+                                                                             sticky="w")
             r += 1
+        top = r
 
         v_name = tk.StringVar(value=self.cfg["assistant_name"])
         label("Prénom de l'assistante", "C'est le mot que vous direz pour l'appeler.")
@@ -385,13 +393,35 @@ class CeliaApp:
         place(tk.Checkbutton(win, text="Recherche web (actualité, météo…)", variable=v_web, bg=BG, fg=FG,
                              selectcolor=PANEL, activebackground=BG, activeforeground=FG,
                              highlightthickness=0, bd=0, anchor="w"))
+        left_end, r, col = r, top, 1
 
+        if self.speaker and hasattr(self.speaker, "refresh"):
+            self.speaker.refresh()  # prend en compte une voix téléchargée entre-temps
         voices = self.speaker.voices if self.speaker else []
-        names = ["(automatique — voix française)"] + [n for _, n in voices]
+        auto_label = "(automatique — meilleure voix française)"
+        names = [auto_label] + [n for _, n in voices]
         current = next((n for i, n in voices if i == self.cfg["voice_id"]), names[0])
         v_voice = tk.StringVar(value=current)
-        label("Voix")
-        place(ttk.Combobox(win, textvariable=v_voice, values=names, state="readonly", width=42))
+        label("Voix", "⭐ = voix Premium / Améliorée, les plus naturelles." if IS_MAC else None)
+        voice_row = tk.Frame(win, bg=BG)
+        ttk.Combobox(voice_row, textvariable=v_voice, values=names, state="readonly",
+                     width=33).pack(side="left", fill="x", expand=True)
+
+        def preview():
+            vid = next((i for i, n in voices if n == v_voice.get()), "")
+            if self.speaker:
+                self.speaker.interrupt()
+                self.speaker.configure(vid, int(v_rate.get()))
+                self.speaker.say(VOICE_SAMPLE.format(name=v_name.get().strip() or self.name))
+        self._btn(voice_row, "▶ Écouter", preview).pack(side="left", padx=(6, 0))
+        place(voice_row)
+        if IS_MAC and self.speaker and not self.speaker.has_premium_french():
+            hint = tk.Frame(win, bg=BG)
+            tk.Label(hint, text="Aucune voix Premium installée : la voix actuelle est basique.",
+                     bg=BG, fg="#ffb86b", font=(FONT, 8)).pack(side="left")
+            self._btn(hint, "Installer une voix Premium…",
+                      lambda: (win.destroy(), self.premium_voice_assistant())).pack(side="right")
+            place(hint)
 
         v_rate = tk.IntVar(value=self.cfg["speech_rate"])
         label("Vitesse de parole")
@@ -463,9 +493,14 @@ class CeliaApp:
                 self.tray.title = self.name
             win.destroy()
 
+        def cancel():
+            if self.speaker:  # annule un éventuel essai de voix
+                self.speaker.configure(self.cfg["voice_id"], self.cfg["speech_rate"])
+            win.destroy()
+
         btns = tk.Frame(win, bg=BG)
-        btns.grid(row=r, column=0, sticky="e", pady=(14, 0))
-        self._btn(btns, "Annuler", win.destroy).pack(side="left", padx=6)
+        btns.grid(row=max(r, left_end), column=0, columnspan=2, sticky="e", pady=(14, 0))
+        self._btn(btns, "Annuler", cancel).pack(side="left", padx=6)
         tk.Button(btns, text="Enregistrer", command=save, bg=ACCENT, fg="white", relief="flat",
                   font=(FONT, 9, "bold"), padx=14, pady=5).pack(side="left")
         win.grab_set()
@@ -540,6 +575,77 @@ class CeliaApp:
             self.memory.data["last_briefing"] = today
             self.memory._save()
         self.speak(self.memory.briefing(self.cfg.get("user_name", "")))
+
+    # ------------------------------------------------------------------ #
+    #  Voix Premium (Mac)
+    # ------------------------------------------------------------------ #
+    def _maybe_suggest_premium_voice(self):
+        if not IS_MAC or not self.cfg.get("premium_voice_hint", True):
+            return
+        if self.speaker is None:
+            self.root.after(1000, self._maybe_suggest_premium_voice)
+            return
+        if not self.speaker.has_premium_french():
+            self.premium_voice_assistant()
+
+    def premium_voice_assistant(self):
+        """Guide pas à pas pour télécharger une voix Premium française sur Mac."""
+        win = tk.Toplevel(self.root)
+        win.title("Une voix plus naturelle")
+        win.configure(bg=BG, padx=20, pady=16)
+        win.transient(self.root)
+        win.resizable(False, False)
+        tk.Label(win, text="Donnez-moi une voix Premium", bg=BG, fg=FG,
+                 font=(FONT, 15, "bold")).pack(anchor="w")
+        steps = ("Votre Mac propose gratuitement des voix françaises très naturelles. "
+                 "Il faut les télécharger une seule fois (quelques centaines de Mo) :\n\n"
+                 "1.  Cliquez sur « Ouvrir les réglages des voix » ci-dessous.\n"
+                 "2.  Dans « Contenu énoncé », à côté de « Voix du système », cliquez sur\n"
+                 "     le menu puis sur « Gérer les voix… ».\n"
+                 "3.  Ouvrez « Français (France) » et téléchargez Audrey (Premium)\n"
+                 "     (ou Aurélie / Thomas en version Améliorée).\n"
+                 "4.  Une fois le téléchargement terminé, revenez ici et cliquez sur\n"
+                 "     « C'est fait, essayer ma nouvelle voix ».")
+        tk.Label(win, text=steps, bg=BG, fg=FG, justify="left", font=(FONT, 11),
+                 wraplength=520).pack(anchor="w", pady=10)
+        status = tk.Label(win, text="", bg=BG, fg=MUTED, font=(FONT, 10), wraplength=440, justify="left")
+        status.pack(anchor="w")
+
+        def open_settings():
+            if not open_voice_settings():
+                status.config(text="Ouvrez vous-même : Réglages Système → Accessibilité → Contenu énoncé.")
+
+        def done():
+            self.speaker.refresh()
+            if self.speaker.has_premium_french():
+                self.cfg["voice_id"] = ""  # automatique = la meilleure voix installée
+                self.cfg["premium_voice_hint"] = False
+                self.cfg.save()
+                self.speaker.configure("", self.cfg["speech_rate"])
+                status.config(text=f"Parfait, j'utilise maintenant « {self.speaker.current_voice} ».", fg=ON)
+                self.speaker.say(VOICE_SAMPLE.format(name=self.name))
+                win.after(4000, win.destroy)
+            else:
+                status.config(text="Je ne trouve pas encore de voix Premium. Le téléchargement est-il terminé ? "
+                                   "Réessayez dans un instant.", fg="#ffb86b")
+
+        def later():
+            win.destroy()
+
+        def never():
+            self.cfg["premium_voice_hint"] = False
+            self.cfg.save()
+            win.destroy()
+
+        row = tk.Frame(win, bg=BG)
+        row.pack(fill="x", pady=(12, 0))
+        tk.Button(row, text="Ouvrir les réglages des voix", command=open_settings, bg=ACCENT, fg="white",
+                  relief="flat", font=(FONT, 10, "bold"), padx=12, pady=6).pack(side="left")
+        self._btn(row, "C'est fait, essayer ma nouvelle voix", done).pack(side="left", padx=8)
+        row2 = tk.Frame(win, bg=BG)
+        row2.pack(fill="x", pady=(8, 0))
+        self._btn(row2, "Plus tard", later).pack(side="left")
+        self._btn(row2, "Ne plus me le proposer", never).pack(side="left", padx=8)
 
     def _check_reminders(self):
         try:
