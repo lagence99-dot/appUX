@@ -42,6 +42,14 @@ saisie, sinon un mode gratuit :
 
 Le jour où vous ajoutez une clé Claude, Celia passe automatiquement sur Claude.
 
+## Version web (sans rien installer)
+
+`web/celia.html` est une version de Celia qui s'ouvre dans le navigateur, publiée comme page
+Claude (artefact). Elle répond avec Claude **via votre compte Claude, sans clé ni crédit API**,
+écoute votre voix (Chrome ou application Claude), parle avec une voix de Claude ou celle de
+l'ordinateur, et garde planning, mémoire et projets de façon privée. Elle n'écoute que tant que
+la page est ouverte et visible.
+
 ## Mémoire permanente, planning et projets
 
 Celia garde en mémoire, **sur votre ordinateur**, tout ce que vous organisez avec elle,

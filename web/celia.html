@@ -1,0 +1,872 @@
+<title>Celia</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout : une console de bureau à deux zones — l'assistante (orbe + conversation) et la journée (planning, mémoire, projets). */
+:root {
+  --bg: #eef1f2;
+  --panel: #ffffff;
+  --panel-2: #f6f8f8;
+  --ink: #15212b;
+  --muted: #5d6b75;
+  --line: #d9e0e3;
+  --accent: #0f7c74;
+  --accent-ink: #ffffff;
+  --accent-soft: #d6eeeb;
+  --warm: #d9733a;
+  --warm-soft: #fbe6d9;
+  --danger: #b5412f;
+  --orb-a: #19a598;
+  --orb-b: #0b5f59;
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: "Inter", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1418; --panel: #151e24; --panel-2: #1b262d; --ink: #e6eef1; --muted: #93a3ad;
+    --line: #26343c; --accent: #3cc1b5; --accent-ink: #072320; --accent-soft: #16352f;
+    --warm: #f0955d; --warm-soft: #3a2619; --danger: #ef7b67; --orb-a: #3cc1b5; --orb-b: #12524c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1418; --panel: #151e24; --panel-2: #1b262d; --ink: #e6eef1; --muted: #93a3ad;
+  --line: #26343c; --accent: #3cc1b5; --accent-ink: #072320; --accent-soft: #16352f;
+  --warm: #f0955d; --warm-soft: #3a2619; --danger: #ef7b67; --orb-a: #3cc1b5; --orb-b: #12524c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-height: 100%; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 18px 28px;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+
+/* Barre du haut */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand b { font-family: var(--font-display); font-size: 20px; letter-spacing: -0.01em; }
+.chip { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.chip.warm { background: var(--warm-soft); color: var(--warm); }
+.chip.plain { background: var(--panel-2); color: var(--muted); }
+.ghost { background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px; }
+.ghost:hover { border-color: var(--accent); color: var(--accent); }
+.primary { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 10px; padding: 9px 14px; font-weight: 600; }
+
+/* Grille */
+.grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; }
+
+/* Assistante */
+.assistant { padding: 26px 22px 18px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.orb-btn { width: 168px; height: 168px; border-radius: 50%; border: 0; padding: 0; background: transparent; position: relative; }
+.orb { position: absolute; inset: 14px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--orb-a), var(--orb-b) 72%);
+  box-shadow: 0 10px 30px -12px var(--orb-b); transition: transform .3s ease, filter .3s ease; }
+.ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; }
+.orb-label { position: absolute; inset: 0; display: grid; place-items: center; color: #fff;
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; text-shadow: 0 1px 2px rgba(0,0,0,.25); }
+[data-state="off"] .orb { filter: grayscale(.85) brightness(1.05); opacity: .75; }
+[data-state="listening"] .ring { opacity: .55; animation: pulse 2.2s ease-out infinite; }
+[data-state="thinking"] .orb { animation: breathe 1.1s ease-in-out infinite; }
+[data-state="speaking"] .orb { background: radial-gradient(circle at 35% 30%, var(--warm), var(--orb-b) 78%); animation: talk .5s ease-in-out infinite alternate; }
+@keyframes pulse { from { transform: scale(.92); opacity: .6; } to { transform: scale(1.08); opacity: 0; } }
+@keyframes breathe { 50% { transform: scale(.94); filter: brightness(1.15); } }
+@keyframes talk { to { transform: scale(1.05); } }
+@media (prefers-reduced-motion: reduce) { .ring, .orb { animation: none !important; } }
+.name { font-family: var(--font-display); font-size: clamp(30px, 5vw, 42px); font-weight: 700; letter-spacing: -0.02em; margin: 2px 0 0; text-wrap: balance; }
+.status { margin: 0; color: var(--muted); text-align: center; text-wrap: balance; max-width: 46ch; }
+.heard { margin: 0; min-height: 1.4em; font-family: var(--font-mono); font-size: 12px; color: var(--muted); text-align: center; max-width: 60ch; overflow-wrap: anywhere; }
+
+.convo { align-self: stretch; display: flex; flex-direction: column; gap: 10px; max-height: 340px; overflow-y: auto; padding: 4px 2px; }
+.bubble { max-width: 88%; padding: 10px 13px; border-radius: 14px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.bubble.you { align-self: flex-end; background: var(--accent-soft); border-bottom-right-radius: 4px; }
+.bubble.celia { align-self: flex-start; background: var(--panel-2); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.bubble.note { align-self: center; background: transparent; color: var(--muted); font-size: 13px; text-align: center; padding: 2px 8px; }
+.empty-convo { color: var(--muted); font-size: 14px; text-align: center; padding: 6px 0; }
+.ask { align-self: stretch; display: flex; gap: 8px; }
+.ask input { flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.examples { align-self: stretch; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.examples button { background: transparent; border: 1px dashed var(--line); border-radius: 999px; padding: 5px 11px; font-size: 13px; color: var(--muted); }
+.examples button:hover { border-color: var(--accent); color: var(--accent); }
+.controls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+/* Journée */
+.day { padding: 18px 18px 14px; display: flex; flex-direction: column; gap: 16px; }
+.day h2 { font-family: var(--font-display); font-size: 19px; margin: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.day h2 small { font-family: var(--font-mono); font-size: 11px; font-weight: 400; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+.group { display: flex; flex-direction: column; gap: 4px; }
+.group-title { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 4px 0 2px; }
+.group-title.late { color: var(--danger); }
+.task { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 8px; }
+.task:hover { background: var(--panel-2); }
+.task input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--accent); }
+.task .t { overflow-wrap: anywhere; }
+.task.done .t { text-decoration: line-through; color: var(--muted); }
+.time { font-family: var(--font-mono); font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.x { background: transparent; border: 0; color: var(--muted); font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 6px; }
+.x:hover { color: var(--danger); background: var(--panel-2); }
+.sub { font-size: 12px; color: var(--muted); }
+.empty { color: var(--muted); font-size: 14px; padding: 4px 4px 2px; }
+.add { display: flex; gap: 6px; flex-wrap: wrap; }
+.add input[type=text] { flex: 1 1 160px; min-width: 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; }
+.add select, .add input[type=time] { background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; }
+.sep { height: 1px; background: var(--line); }
+.mem { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 5px 4px; }
+.mem .t { overflow-wrap: anywhere; }
+.proj { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; gap: 2px; }
+.proj b { font-family: var(--font-display); font-weight: 500; }
+
+/* Réglages */
+.sheet { position: fixed; inset: 0; background: rgba(8, 14, 18, .45); display: grid; place-items: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); z-index: 20; }
+.sheet .card { width: min(560px, 100%); max-height: 100%; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.sheet h3 { font-family: var(--font-display); font-size: 22px; margin: 0; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-weight: 600; font-size: 14px; }
+.field .help { font-size: 12.5px; color: var(--muted); }
+.field input[type=text], .field select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row > select { flex: 1; min-width: 0; }
+.caps { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 12px; display: flex; gap: 12px; align-items: center;
+  max-width: calc(100% - 32px); z-index: 30; box-shadow: 0 10px 30px -10px rgba(0,0,0,.4); }
+.toast button { background: transparent; border: 0; color: var(--bg); font-weight: 600; text-decoration: underline; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><b id="brand-name">Celia</b><span class="chip" id="engine-chip">Démarrage…</span></div>
+    <div class="row">
+      <span class="chip plain" id="save-chip">Mémoire locale</span>
+      <button class="ghost" id="open-settings" type="button">Réglages</button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="card assistant" id="assistant" data-state="off" aria-label="Assistante">
+      <button class="orb-btn" id="orb" type="button" aria-label="Activer ou couper l'écoute">
+        <span class="ring"></span><span class="orb"></span><span class="orb-label" id="orb-label">Activer</span>
+      </button>
+      <h1 class="name" id="name">Celia</h1>
+      <p class="status" id="status">Clique sur l'orbe pour me réveiller.</p>
+      <p class="heard" id="heard" aria-live="polite"></p>
+      <div class="controls">
+        <button class="ghost" id="stop" type="button">Interrompre</button>
+        <button class="ghost" id="new-convo" type="button">Nouvelle conversation</button>
+      </div>
+      <div class="convo" id="convo" aria-live="polite">
+        <p class="empty-convo" id="convo-empty">Nos échanges s'affichent ici. Tu peux aussi écrire ta question.</p>
+      </div>
+      <form class="ask" id="ask-form">
+        <input id="ask-input" type="text" autocomplete="off" placeholder="Écris ta question…" aria-label="Ta question">
+        <button class="primary" type="submit">Envoyer</button>
+      </form>
+      <div class="examples" id="examples">
+        <button type="button">Qu'est-ce que j'ai à faire aujourd'hui ?</button>
+        <button type="button">Rappelle-moi d'appeler le comptable demain à 9 h 30</button>
+        <button type="button">Retiens qu'on paie par Stripe pour l'appli resto</button>
+        <button type="button">Nouveau projet : une appli de réservation de tables</button>
+      </div>
+    </section>
+
+    <aside class="card day" aria-label="Ma journée">
+      <h2>Ma journée <small id="today-label"></small></h2>
+      <div id="tasks"></div>
+      <form class="add" id="add-form">
+        <input type="text" id="add-title" placeholder="Ajouter une tâche…" aria-label="Nouvelle tâche">
+        <select id="add-when" aria-label="Quand">
+          <option value="0">Aujourd'hui</option><option value="1">Demain</option><option value="">Sans date</option>
+        </select>
+        <input type="time" id="add-time" aria-label="Heure (facultatif)">
+        <button class="ghost" type="submit">Ajouter</button>
+      </form>
+      <div class="sep"></div>
+      <h2>Mémoire <small id="mem-count"></small></h2>
+      <div id="notes"></div>
+      <div class="sep"></div>
+      <h2>Projets <small id="proj-count"></small></h2>
+      <div id="projects"></div>
+    </aside>
+  </main>
+</div>
+
+<div class="sheet" id="settings" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <h3 id="settings-title">Réglages</h3>
+    <div class="field">
+      <label for="set-name">Prénom de l'assistante</label>
+      <input type="text" id="set-name" autocomplete="off">
+      <span class="help">C'est le mot que tu diras pour l'appeler.</span>
+    </div>
+    <div class="field">
+      <label for="set-user">Ton prénom</label>
+      <input type="text" id="set-user" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="set-voice">Voix</label>
+      <div class="row"><select id="set-voice"></select><button class="ghost" type="button" id="test-voice">Écouter</button></div>
+      <span class="help" id="voice-help"></span>
+    </div>
+    <div class="field">
+      <label for="set-rate">Vitesse de parole <span id="rate-val" class="sub"></span></label>
+      <input type="range" id="set-rate" min="0.8" max="1.4" step="0.05">
+    </div>
+    <div class="field">
+      <label for="set-depth">Réflexion</label>
+      <select id="set-depth">
+        <option value="quick">Rapide — idéal à l'oral</option>
+        <option value="default">Approfondie — plus lente, pour les sujets complexes</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="set-sens">Exigence de reconnaissance du prénom <span id="sens-val" class="sub"></span></label>
+      <input type="range" id="set-sens" min="0.6" max="0.95" step="0.01">
+      <span class="help">Plus bas : réagit plus facilement, mais se déclenche parfois toute seule.</span>
+    </div>
+    <div class="field">
+      <label>Ce que cette page peut utiliser ici</label>
+      <div class="caps" id="caps"></div>
+    </div>
+    <div class="row" style="justify-content: flex-end"><button class="primary" type="button" id="close-settings">Terminé</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden><span id="toast-text"></span><button type="button" id="toast-action" hidden></button></div>
+
+<script>
+(() => {
+"use strict";
+
+// ------------------------------------------------------------------ utilitaires
+const $ = (id) => document.getElementById(id);
+const JOURS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+const pad = (n) => String(n).padStart(2, "0");
+const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const todayIso = () => iso(new Date());
+const parseIso = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || "")); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
+function frDate(s) {
+  const d = parseIso(s); if (!d) return "sans date";
+  const diff = Math.round((d - parseIso(todayIso())) / 86400000);
+  if (diff === 0) return "aujourd'hui"; if (diff === 1) return "demain"; if (diff === -1) return "hier";
+  return `${JOURS[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()]}`;
+}
+function parseTime(v) {
+  const m = /^\s*(\d{1,2})\s*(?:[:hH]\s*(\d{0,2}))?\s*$/.exec(String(v || ""));
+  if (!m) return null; const h = +m[1], mi = +(m[2] || 0);
+  return h < 24 && mi < 60 ? `${pad(h)}:${pad(mi)}` : null;
+}
+const sayTime = (t) => { const [h, m] = t.split(":"); return `${+h} h${m !== "00" ? " " + m : ""}`; };
+function normalize(t) {
+  return String(t).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[’'\-]/g, "").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+function lcsRatio(a, b) {  // ressemblance de deux mots, 0 à 1 (comme difflib)
+  const m = a.length, n = b.length; if (!m || !n) return 0;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
+    dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+  return (2 * dp[m][n]) / (m + n);
+}
+// Cherche le prénom dans les premiers mots ; renvoie la suite de la phrase, ou null.
+function findWake(text, name, sens) {
+  const words = String(text).trim().split(/\s+/).filter(Boolean);
+  const norm = words.map(normalize);
+  const target = normalize(name).replace(/ /g, "");
+  if (!target || !words.length) return null;
+  let best = null;
+  for (let i = 0; i < Math.min(4, words.length); i++) {
+    for (let span = 1; span <= 3 && i + span <= words.length; span++) {
+      const cand = norm.slice(i, i + span).join("");
+      if (!cand) continue;
+      const r = lcsRatio(cand, target);
+      if (r >= sens && (!best || r > best.r)) best = { r, end: i + span };
+    }
+  }
+  if (!best) return null;
+  return words.slice(best.end).join(" ").replace(/^[\s,.;:!?]+/, "").trim();
+}
+function cleanSpeech(t) {
+  return String(t).replace(/https?:\/\/\S+/g, "").replace(/\[(.*?)\]\(.*?\)/g, "$1")
+    .replace(/[*_#`>|]+/g, "").replace(/^\s*[-•]\s+/gm, "").replace(/\s+/g, " ").trim();
+}
+
+// ------------------------------------------------------------------ état
+const DEFAULT_SETTINGS = { name: "Celia", user: "", voice: "auto", rate: 1, depth: "quick", sens: 0.78, lastBriefing: "" };
+const S = { settings: { ...DEFAULT_SETTINGS }, tasks: [], notes: [], projects: [], nextId: 1 };
+let journal = [];
+let turns = [], lastExchange = 0;
+const caps = { sample: null, dictation: null, tts: null, db: null, user: null, toolsOK: false, toolMax: 20 };
+let docRef = null, journalRef = null;
+const LS_KEY = "celia-web-v1";
+const newId = (p) => p + (S.nextId++);
+
+function loadLocal() {
+  try { const raw = localStorage.getItem(LS_KEY); if (raw) mergeState(JSON.parse(raw)); } catch (e) {}
+}
+function mergeState(d) {
+  if (!d || typeof d !== "object") return;
+  if (d.settings) S.settings = { ...DEFAULT_SETTINGS, ...d.settings };
+  for (const k of ["tasks", "notes", "projects"]) if (Array.isArray(d[k])) S[k] = d[k];
+  if (Number.isFinite(d.nextId)) S.nextId = d.nextId;
+  if (Array.isArray(d.journal)) journal = d.journal;
+}
+const serialize = () => ({ settings: S.settings, tasks: S.tasks, notes: S.notes, projects: S.projects, nextId: S.nextId });
+
+let saveT = null, saving = false, again = false;
+function persist() { clearTimeout(saveT); saveT = setTimeout(flush, 600); }
+async function flush() {
+  if (saving) { again = true; return; }
+  saving = true;
+  try {
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ ...serialize(), journal: journal.slice(-60) })); } catch (e) {}
+    if (docRef) { await docRef.set(serialize()); $("save-chip").textContent = "Mémoire synchronisée"; }
+  } catch (e) {
+    $("save-chip").textContent = "Mémoire locale seulement";
+  } finally {
+    saving = false;
+    if (again) { again = false; flush(); }
+  }
+}
+let jSaving = false;
+async function saveJournal() {
+  if (!journalRef || jSaving) return;
+  jSaving = true;
+  try { await journalRef.set({ entries: journal.slice(-150) }); } catch (e) {} finally { jSaving = false; }
+}
+
+// ------------------------------------------------------------------ mémoire : opérations
+function addTask(title, date, time, project) {
+  title = String(title || "").trim(); if (!title) throw new Error("La tâche n'a pas de titre.");
+  let d = parseIso(date) ? iso(parseIso(date)) : null; const t = parseTime(time);
+  if (t && !d) d = todayIso();
+  const task = { id: newId("T"), title, date: d, time: t, project: String(project || "").trim() || null,
+    done: false, created: new Date().toISOString(), doneAt: null, reminded: false };
+  S.tasks.push(task); persist(); renderDay(); return task;
+}
+const findTask = (id) => { let k = String(id || "").trim().toUpperCase(); if (k && k[0] !== "T") k = "T" + k; return S.tasks.find((t) => t.id === k); };
+function updateTask(id, f) {
+  const t = findTask(id); if (!t) throw new Error(`Tâche ${id} introuvable.`);
+  if (f.title) t.title = String(f.title).trim();
+  if (f.date !== undefined && f.date !== null) { t.date = parseIso(f.date) ? iso(parseIso(f.date)) : null; t.reminded = false; }
+  if (f.time !== undefined && f.time !== null) { t.time = parseTime(f.time); t.reminded = false; }
+  if (f.project !== undefined && f.project !== null) t.project = String(f.project).trim() || null;
+  if (f.done !== undefined && f.done !== null) { t.done = !!f.done; t.doneAt = t.done ? new Date().toISOString() : null; }
+  persist(); renderDay(); return t;
+}
+function deleteTask(id) {
+  const t = findTask(id); if (!t) throw new Error(`Tâche ${id} introuvable.`);
+  S.tasks = S.tasks.filter((x) => x !== t); persist(); renderDay(); return t;
+}
+const KINDS = { note: "Note", decision: "Décision", action: "Action", idee: "Idée" };
+function addNote(text, kind, project) {
+  text = String(text || "").trim(); if (!text) throw new Error("Rien à retenir.");
+  const n = { id: newId("N"), text, kind: KINDS[kind] ? kind : "note", project: String(project || "").trim() || null, date: new Date().toISOString() };
+  S.notes.push(n); persist(); renderDay(); return n;
+}
+function findProject(name) {
+  const t = normalize(name || ""); if (!t) return null;
+  return S.projects.find((p) => normalize(p.name) === t) || S.projects.find((p) => normalize(p.name).includes(t) || t.includes(normalize(p.name)));
+}
+function createProject(name, description, steps) {
+  name = String(name || "").trim(); if (!name) throw new Error("Le projet n'a pas de nom.");
+  if (findProject(name)) throw new Error(`Le projet « ${name} » existe déjà.`);
+  const p = { id: newId("P"), name, description: String(description || "").trim(), status: "en cours", created: new Date().toISOString() };
+  S.projects.push(p);
+  for (const s of (Array.isArray(steps) ? steps : []).slice(0, 10)) if (String(s).trim()) addTask(String(s), null, null, name);
+  persist(); renderDay(); return p;
+}
+function recall(query, project) {
+  const q = new Set(normalize(query || "").split(" ").filter((w) => w.length > 2));
+  const score = (txt) => { if (!q.size) return 1; let s = 0; for (const w of normalize(txt).split(" ")) if (q.has(w)) s++; return s; };
+  const out = [];
+  const pOk = (txt, p) => !project || normalize(p || "").includes(normalize(project)) || normalize(txt).includes(normalize(project));
+  for (const n of S.notes) if (pOk(n.text, n.project)) out.push({ s: score(n.text), d: n.date, item: { type: KINDS[n.kind], date: n.date.slice(0, 10), texte: n.text, projet: n.project } });
+  for (const t of S.tasks) if (pOk(t.title, t.project)) out.push({ s: score(t.title), d: t.created, item: { type: t.done ? "Tâche terminée" : "Tâche", prevue: t.date, texte: t.title, projet: t.project } });
+  for (const j of journal) out.push({ s: score(j.q + " " + j.a), d: j.d, item: { type: "Conversation", date: (j.d || "").slice(0, 10), texte: `Question : ${j.q} | Réponse : ${j.a}` } });
+  return out.filter((r) => r.s > 0).sort((a, b) => b.s - a.s || String(b.d).localeCompare(String(a.d))).slice(0, 10).map((r) => r.item);
+}
+function tasksBetween(start, end, includeDone) {
+  return S.tasks.filter((t) => (includeDone || !t.done) && t.date && (!start || t.date >= start) && (!end || t.date <= end))
+    .sort((a, b) => (a.date + (a.time || "99")).localeCompare(b.date + (b.time || "99")));
+}
+const taskLine = (t) => `- ${t.id} : ${t.title} (${t.date ? frDate(t.date) : "sans date"}${t.time ? " à " + sayTime(t.time) : ""})${t.project ? " [projet " + t.project + "]" : ""}${t.done ? " — terminée" : ""}`;
+function contextSummary() {
+  const today = todayIso(), week = iso(addDays(new Date(), 7)), L = [];
+  const late = S.tasks.filter((t) => !t.done && t.date && t.date < today);
+  if (late.length) L.push("En retard :", ...late.slice(0, 15).map(taskLine));
+  const next = tasksBetween(today, week);
+  L.push(next.length ? "Planning des 7 prochains jours :" : "Rien de prévu dans les 7 prochains jours.", ...next.slice(0, 40).map(taskLine));
+  const undated = S.tasks.filter((t) => !t.done && !t.date);
+  if (undated.length) L.push("À faire, sans date :", ...undated.slice(0, 15).map(taskLine));
+  const later = tasksBetween(iso(addDays(new Date(), 8)), null);
+  if (later.length) L.push(`Plus tard : ${later.length} tâche(s).`, ...later.slice(0, 10).map(taskLine));
+  const recent = S.tasks.filter((t) => t.done && t.doneAt && t.doneAt.slice(0, 10) >= iso(addDays(new Date(), -2)));
+  if (recent.length) L.push("Terminé récemment :", ...recent.slice(-8).map(taskLine));
+  if (S.projects.length) L.push("Projets : " + S.projects.map((p) => `${p.name} (${p.status})`).join("; "));
+  if (S.notes.length) L.push("Dernières choses retenues :", ...S.notes.slice(-12).map((n) => `- ${frDate(n.date.slice(0, 10))}, ${KINDS[n.kind].toLowerCase()}${n.project ? " [projet " + n.project + "]" : ""} : ${n.text}`));
+  return L.join("\n");
+}
+function briefing() {
+  const today = todayIso(), tomorrow = iso(addDays(new Date(), 1));
+  const list = (ts) => { const it = ts.slice(0, 6).map((t) => t.title + (t.time ? " à " + sayTime(t.time) : "")); return it.length > 1 ? it.slice(0, -1).join(", ") + " et " + it[it.length - 1] : it[0]; };
+  const tToday = tasksBetween(today, today), tTom = tasksBetween(tomorrow, tomorrow), late = S.tasks.filter((t) => !t.done && t.date && t.date < today);
+  const d = new Date(), user = S.settings.user;
+  const out = [`Bonjour${user ? " " + user : ""} ! Nous sommes ${JOURS[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()]}.`];
+  out.push(tToday.length ? `Aujourd'hui, tu as ${tToday.length} chose${tToday.length > 1 ? "s" : ""} de prévue${tToday.length > 1 ? "s" : ""} : ${list(tToday)}.` : "Rien n'est prévu aujourd'hui pour l'instant.");
+  if (late.length) out.push(`Il reste ${late.length} tâche${late.length > 1 ? "s" : ""} en retard : ${list(late)}.`);
+  if (tTom.length) out.push(`Demain : ${list(tTom)}.`);
+  return out.join(" ");
+}
+
+// ------------------------------------------------------------------ outils donnés à Claude
+const str = { type: "string" };
+const TOOLS = [
+  { name: "ajouter_tache", description: "Ajoute une tâche, un rendez-vous ou un rappel au planning. Avec une heure, un rappel vocal sera fait à ce moment-là. Renvoie la tâche créée.",
+    inputSchema: { type: "object", properties: { titre: str, date: { type: "string", description: "AAAA-MM-JJ, calculée depuis la date du jour" }, heure: { type: "string", description: "HH:MM" }, projet: str }, required: ["titre"] },
+    execute: (i) => taskView(addTask(i.titre, i.date, i.heure, i.projet)) },
+  { name: "modifier_tache", description: "Modifie une tâche (titre, date, heure, projet) ou la marque terminée (terminee=true) / à refaire. Utilise l'identifiant T… du planning.",
+    inputSchema: { type: "object", properties: { id: str, titre: str, date: str, heure: str, projet: str, terminee: { type: "boolean" } }, required: ["id"] },
+    execute: (i) => taskView(updateTask(i.id, { title: i.titre, date: i.date, time: i.heure, project: i.projet, done: i.terminee })) },
+  { name: "supprimer_tache", description: "Supprime une tâche, seulement si on te le demande explicitement.",
+    inputSchema: { type: "object", properties: { id: str }, required: ["id"] },
+    execute: (i) => ({ supprimee: deleteTask(i.id).title }) },
+  { name: "retenir", description: "Enregistre durablement une décision, une action mise en place, une idée ou une note. À utiliser quand on te dit « retiens », « note », ou quand une décision est prise.",
+    inputSchema: { type: "object", properties: { texte: str, type: { type: "string", enum: Object.keys(KINDS) }, projet: str }, required: ["texte"] },
+    execute: (i) => ({ ok: true, id: addNote(i.texte, i.type, i.projet).id }) },
+  { name: "rechercher_memoire", description: "Cherche dans les notes, les tâches (même terminées) et les conversations passées. Pour « qu'avait-on décidé… », « on en était où… ».",
+    inputSchema: { type: "object", properties: { recherche: str, projet: str } },
+    execute: (i) => { const r = recall(i.recherche, i.projet); return r.length ? { resultats: r } : { resultats: [], info: "Rien trouvé." }; } },
+  { name: "creer_projet", description: "Crée un projet avec ses premières étapes (ajoutées au planning). Propose 3 à 5 étapes concrètes si on ne t'en donne pas.",
+    inputSchema: { type: "object", properties: { nom: str, description: str, etapes: { type: "array", items: str } }, required: ["nom", "description"] },
+    execute: (i) => { const p = createProject(i.nom, i.description, i.etapes); return { ok: true, projet: p.name }; } },
+  { name: "voir_projet", description: "Donne tout ce qui concerne un projet : description, tâches et notes.",
+    inputSchema: { type: "object", properties: { nom: str }, required: ["nom"] },
+    execute: (i) => { const p = findProject(i.nom); if (!p) throw new Error(`Projet « ${i.nom} » introuvable.`);
+      const k = normalize(p.name);
+      return { projet: p, taches: S.tasks.filter((t) => normalize(t.project || "") === k).map(taskView), notes: S.notes.filter((n) => normalize(n.project || "") === k).slice(-15) }; } },
+];
+const taskView = (t) => ({ id: t.id, titre: t.title, quand: t.date ? frDate(t.date) : "sans date", date: t.date, heure: t.time, projet: t.project, terminee: t.done });
+
+const RULES = `Tu es {name}, l'assistante vocale personnelle de {user}. Ta réponse sera lue à voix haute par une synthèse vocale. Tu tutoies {user}.
+Forme : uniquement des phrases parlées naturelles, sans markdown, listes, titres, emojis ni URL. Deux à quatre phrases en général. Ne lis jamais les identifiants (T12, N4…).
+Rôle : répondre à toutes les questions, et être la secrétaire et la partenaire de projets de {user}. Tu as une mémoire permanente résumée ci-dessous.
+{tools}
+La transcription vocale peut contenir des erreurs : interprète raisonnablement, et fais répéter si c'est incompréhensible. N'invente jamais une tâche ou un souvenir.
+Date et heure : {now} (ISO : {iso}).
+
+=== Mémoire de {user} ===
+{memory}
+
+=== Conversation ===`;
+const TOOL_RULES = `Quand on te demande de noter, planifier ou rappeler quelque chose, utilise tes outils puis confirme brièvement quoi et quand. Enregistre d'office les décisions importantes avec « retenir ». Pour une question sur le passé, cherche avec « rechercher_memoire ». N'écris aucun texte avant ou entre tes appels d'outils : écris seulement la réponse finale.`;
+const NO_TOOL_RULES = `Ici, tu ne peux pas modifier le planning : si on te le demande, explique qu'il faut ajouter la tâche dans le panneau « Ma journée ».`;
+
+function buildInput(question) {
+  if (Date.now() - lastExchange > 20 * 60 * 1000) turns = [];
+  const d = new Date();
+  const rules = RULES.replaceAll("{name}", S.settings.name || "Celia").replaceAll("{user}", S.settings.user || "l'utilisateur")
+    .replace("{tools}", caps.toolsOK ? TOOL_RULES : NO_TOOL_RULES)
+    .replace("{now}", `${JOURS[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()]} ${d.getFullYear()}, ${d.getHours()} h ${pad(d.getMinutes())}`)
+    .replace("{iso}", iso(d)).replace("{memory}", contextSummary() || "(vide pour l'instant)");
+  const msgs = [...turns, { role: "user", content: question }];
+  msgs[0] = { role: "user", content: rules + "\n\n" + msgs[0].content };
+  return msgs;
+}
+
+const ERRORS = {
+  not_granted: "Tu n'as pas autorisé cette page à utiliser Claude. Recharge la page pour qu'elle te le redemande.",
+  sampling_disabled: "Claude n'est pas disponible pour ce compte ici.",
+  rate_limited: "Tu as atteint la limite d'utilisation pour le moment. Réessaie un peu plus tard.",
+  session_expired: "Ta session Claude a expiré : reconnecte-toi puis réessaie.",
+  refused: "Je ne peux pas répondre à cette demande. Essaie de la formuler autrement.",
+  prompt_too_large: "Notre conversation est devenue trop longue. Clique sur « Nouvelle conversation ».",
+  empty_completion: "Je n'ai pas trouvé de réponse. Reformule ta question ?",
+};
+let askCtl = null;
+async function askClaude(question) {
+  if (!caps.sample) return demoAnswer(question);
+  askCtl = new AbortController();
+  const opts = { cache: false, signal: askCtl.signal, modelTier: S.settings.depth === "default" ? "default" : "quick" };
+  if (caps.toolsOK) { opts.tools = TOOLS.slice(0, caps.toolMax); delete opts.cache; }
+  try {
+    const { text } = await caps.sample(buildInput(question), opts);
+    const answer = cleanSpeech(text.split(/\n\s*\n/).filter((p) => p.trim()).slice(-3).join(" ")) || "Je n'ai pas de réponse à cela.";
+    turns.push({ role: "user", content: question }, { role: "assistant", content: answer });
+    turns = turns.slice(-20); lastExchange = Date.now();
+    journal.push({ d: new Date().toISOString(), q: question, a: answer }); journal = journal.slice(-150);
+    saveJournal(); persist();
+    return answer;
+  } catch (e) {
+    if (e && e.code === "cancelled") return null;
+    if (e && e.code === "tools_unavailable") { caps.toolsOK = false; return askClaude(question); }
+    if (e && (e.code === "not_granted" || e.code === "sampling_disabled")) { caps.sample = null; updateEngineChip(); }
+    return (e && ERRORS[e.code]) || "Une erreur passagère est survenue. Réessaie dans un instant.";
+  } finally { askCtl = null; }
+}
+function demoAnswer(q) {
+  const n = normalize(q), d = new Date();
+  if (n.includes("heure")) return `Il est ${d.getHours()} heures ${pad(d.getMinutes())}.`;
+  if (n.includes("date") || n.includes("quel jour")) return `Nous sommes ${JOURS[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()]} ${d.getFullYear()}.`;
+  if (/planning|faire|prevu|programme|agenda|taches/.test(n)) return briefing().replace(/^Bonjour[^!]*! /, "");
+  return "Je t'entends bien ! Ici, je n'ai pas accès à Claude, alors je sais seulement donner l'heure, la date et ton planning.";
+}
+
+// ------------------------------------------------------------------ voix (sortie)
+const CLAUDE_VOICES = { buttery: "Claude — Douce", airy: "Claude — Aérienne", glassy: "Claude — Claire", rounded: "Claude — Ronde" };
+let speakingUntil = 0, speaking = false, interacted = false;
+const usesClaudeVoice = () => !!caps.tts && (S.settings.voice.startsWith("claude:") || (S.settings.voice === "auto" && !caps.dictation));
+function browserVoices() {
+  try { return (window.speechSynthesis && speechSynthesis.getVoices()) || []; } catch (e) { return []; }
+}
+function bestBrowserVoice() {
+  const vs = browserVoices(), name = S.settings.voice.startsWith("os:") ? S.settings.voice.slice(3) : "";
+  if (name) { const v = vs.find((x) => x.name === name); if (v) return v; }
+  const fr = vs.filter((v) => /^fr/i.test(v.lang));
+  const q = (v) => /premium/i.test(v.name) ? 3 : /enhanced|amélior|ameliore|neural|natural/i.test(v.name) ? 2 : /google/i.test(v.name) ? 1 : 0;
+  fr.sort((a, b) => q(b) - q(a) || (/fr-FR/i.test(b.lang) - /fr-FR/i.test(a.lang)));
+  return fr[0] || null;
+}
+function browserSpeak(text) {
+  return new Promise((resolve) => {
+    if (!window.speechSynthesis) return resolve();
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      const v = bestBrowserVoice(); if (v) u.voice = v;
+      u.lang = (v && v.lang) || "fr-FR"; u.rate = S.settings.rate;
+      const safety = setTimeout(resolve, 4000 + text.length * 110);
+      u.onend = u.onerror = () => { clearTimeout(safety); resolve(); };
+      speechSynthesis.speak(u);
+    } catch (e) { resolve(); }
+  });
+}
+async function say(text) {
+  if (!text) return;
+  speaking = true; setOrb("speaking");
+  setStatus(`Je parle… (« ${S.settings.name} stop » ou Interrompre)`);
+  try {
+    if (usesClaudeVoice()) {
+      if (caps.dictation && caps.dictation.active()) await caps.dictation.stop();
+      const v = S.settings.voice.startsWith("claude:") ? S.settings.voice.slice(7) : "buttery";
+      await caps.tts.speak(text.slice(0, 1990), { voice: v, rate: S.settings.rate, language: "fr" });
+    } else if (interacted) {
+      await browserSpeak(text);
+    }
+  } catch (e) {
+    if (e && e.code === "not_granted") { toast("La lecture à voix haute est désactivée pour cette page : je réponds par écrit."); }
+  } finally {
+    speaking = false; speakingUntil = Date.now() + 700; idleUI();
+  }
+}
+function stopSpeaking() {
+  try { caps.tts && caps.tts.stop(); } catch (e) {}
+  try { window.speechSynthesis && speechSynthesis.cancel(); } catch (e) {}
+  if (askCtl) askCtl.abort();
+}
+
+// ------------------------------------------------------------------ écoute (entrée)
+let wantHandsFree = false, buffer = "", flushT = null, awaitingUntil = 0, busy = false, pushing = false;
+function handsFreeMode() { return !usesClaudeVoice(); }
+function startListening() {   // DOIT être appelé directement depuis un clic ou une touche
+  if (!caps.dictation) return;
+  caps.dictation.start({ language: "fr" }).catch((e) => {
+    wantHandsFree = false; pushing = false;
+    const msg = { not_granted: "Micro refusé. Tu peux l'autoriser dans le menu Permissions de la page, ou écrire tes questions.",
+      unavailable: "L'écoute n'est pas disponible ici. Écris tes questions dans le champ ci-dessous.",
+      rate_limited: "Trop de demandes d'écoute en même temps. Réessaie dans un instant.",
+      dismissed: "D'accord, je n'écoute pas. Clique sur l'orbe quand tu veux." }[e && e.code];
+    if (msg) toast(msg);
+    idleUI();
+  });
+}
+function scheduleFlush(ms) { clearTimeout(flushT); flushT = setTimeout(processUtterance, ms); }
+function onFinal(text) {
+  if (speaking || Date.now() < speakingUntil) {   // pendant qu'elle parle : seulement « Celia stop »
+    const rest = findWake(text, S.settings.name, S.settings.sens);
+    if (rest !== null && /^(stop|arrete|tais toi|silence|chut)?$/.test(normalize(rest))) stopSpeaking();
+    return;
+  }
+  buffer += text; scheduleFlush(pushing ? 1600 : 1100);
+}
+async function processUtterance() {
+  const text = buffer.trim(); buffer = "";
+  if (!text || busy) return;
+  if (pushing) {  // mode « appuyer pour parler » : pas besoin du prénom
+    pushing = false; if (caps.dictation.active()) await caps.dictation.stop();
+    return handle(text);
+  }
+  if (Date.now() < awaitingUntil) { awaitingUntil = 0; return handle(text); }
+  const rest = findWake(text, S.settings.name, S.settings.sens);
+  if (rest === null) return;
+  if (!rest) { awaitingUntil = Date.now() + 9000; setStatus("Oui ? Je t'écoute…"); await say("Oui ?"); awaitingUntil = Date.now() + 9000; setStatus("Oui ? Je t'écoute…"); return; }
+  handle(rest);
+}
+async function handle(question) {
+  const n = normalize(question);
+  if (/^(stop|arrete|tais toi|silence|chut)$/.test(n)) return stopSpeaking();
+  if (/nouvelle conversation|oublie tout|on recommence/.test(n)) { turns = []; bubble("note", "Nouvelle conversation"); return say("C'est noté, on repart de zéro."); }
+  busy = true; bubble("you", question); setOrb("thinking"); setStatus("Je réfléchis…");
+  const answer = await askClaude(question);
+  busy = false;
+  if (answer === null) return idleUI();
+  bubble("celia", answer);
+  await say(answer);
+}
+
+// ------------------------------------------------------------------ rappels
+function checkReminders() {
+  const now = new Date(), today = todayIso(), hm = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  let changed = false;
+  for (const t of S.tasks) {
+    if (t.done || t.reminded || !t.time || t.date !== today || t.time > hm) continue;
+    t.reminded = true; changed = true;
+    toast(`Rappel : ${t.title}`);
+    bubble("note", `Rappel — ${t.title}`);
+    if (interacted && !busy) say(`Petit rappel : ${t.title}.`);
+  }
+  if (changed) { persist(); renderDay(); }
+}
+
+// ------------------------------------------------------------------ interface
+function setOrb(state) {
+  $("assistant").dataset.state = state;
+  $("orb-label").textContent = { off: "Activer", listening: "J'écoute", thinking: "…", speaking: "Je parle", ready: "Parler" }[state] || "";
+}
+function setStatus(t) { $("status").textContent = t; }
+function idleUI() {
+  const listening = caps.dictation && caps.dictation.active();
+  if (busy) return;
+  if (listening && !pushing) { setOrb("listening"); setStatus(`À l'écoute — dis « ${S.settings.name} » suivi de ta question.`); }
+  else if (listening && pushing) { setOrb("listening"); setStatus("Je t'écoute… parle, puis fais une pause."); }
+  else if (!caps.dictation) { setOrb("ready"); setStatus("Écris ta question ci-dessous : l'écoute n'est pas disponible dans ce navigateur (utilise Chrome ou l'app Claude)."); }
+  else if (!handsFreeMode()) { setOrb("ready"); setStatus("Appuie sur l'orbe ou sur Espace pour me parler."); }
+  else { setOrb("off"); setStatus("Clique sur l'orbe pour me réveiller."); }
+}
+function bubble(kind, text) {
+  $("convo-empty").hidden = true;
+  const b = document.createElement("div"); b.className = "bubble " + kind; b.textContent = text;
+  $("convo").appendChild(b); $("convo").scrollTop = $("convo").scrollHeight;
+}
+let toastT = null;
+function toast(text, actionLabel, action) {
+  $("toast-text").textContent = text; $("toast").hidden = false;
+  const a = $("toast-action"); a.hidden = !actionLabel; a.textContent = actionLabel || "";
+  a.onclick = () => { $("toast").hidden = true; action && action(); };
+  clearTimeout(toastT); toastT = setTimeout(() => { $("toast").hidden = true; }, 5000);
+}
+function updateEngineChip() {
+  const c = $("engine-chip");
+  if (caps.sample) { c.textContent = "Claude · ton compte"; c.className = "chip"; }
+  else { c.textContent = "Mode démo"; c.className = "chip warm"; }
+  const capsEl = $("caps"); capsEl.textContent = "";
+  for (const [ok, label] of [[!!caps.sample, "Réponses de Claude"], [caps.toolsOK, "Planning par la voix"], [!!caps.dictation, "Écoute"], [!!caps.tts, "Voix de Claude"], [!!window.speechSynthesis, "Voix de l'ordinateur"], [!!docRef, "Mémoire synchronisée"]]) {
+    const s = document.createElement("span"); s.className = "chip " + (ok ? "" : "plain"); s.textContent = (ok ? "✓ " : "✗ ") + label; capsEl.appendChild(s);
+  }
+}
+function renderName() {
+  const n = S.settings.name || "Celia";
+  $("name").textContent = n; $("brand-name").textContent = n;
+}
+function taskRow(t) {
+  const row = document.createElement("div"); row.className = "task" + (t.done ? " done" : "");
+  const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = t.done; cb.id = "cb-" + t.id;
+  cb.setAttribute("aria-label", "Terminée : " + t.title);
+  cb.onchange = () => updateTask(t.id, { done: cb.checked });
+  const label = document.createElement("div"); label.className = "t";
+  const title = document.createElement("div"); title.textContent = t.title; label.appendChild(title);
+  if (t.project) { const s = document.createElement("div"); s.className = "sub"; s.textContent = "Projet " + t.project; label.appendChild(s); }
+  const time = document.createElement("span"); time.className = "time"; time.textContent = t.time || "";
+  const x = document.createElement("button"); x.className = "x"; x.type = "button"; x.textContent = "×"; x.setAttribute("aria-label", "Supprimer " + t.title);
+  x.onclick = () => { const copy = { ...t }; deleteTask(t.id); toast("Tâche supprimée", "Annuler", () => { S.tasks.push(copy); persist(); renderDay(); }); };
+  row.append(cb, label, time, x); return row;
+}
+function renderDay() {
+  const d = new Date();
+  $("today-label").textContent = `${JOURS[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()]}`;
+  const today = todayIso(), tomorrow = iso(addDays(d, 1));
+  const box = $("tasks"); box.textContent = "";
+  const groups = [
+    ["En retard", S.tasks.filter((t) => !t.done && t.date && t.date < today), "late"],
+    ["Aujourd'hui", tasksBetween(today, today, true)],
+    ["Demain", tasksBetween(tomorrow, tomorrow, true)],
+    ["Plus tard", tasksBetween(iso(addDays(d, 2)), null)],
+    ["Sans date", S.tasks.filter((t) => !t.date && !t.done)],
+  ];
+  let any = false;
+  for (const [title, list, cls] of groups) {
+    if (!list.length) continue; any = true;
+    const g = document.createElement("div"); g.className = "group";
+    const h = document.createElement("div"); h.className = "group-title" + (cls ? " " + cls : ""); h.textContent = `${title} · ${list.length}`;
+    g.appendChild(h); list.forEach((t) => g.appendChild(taskRow(t))); box.appendChild(g);
+  }
+  if (!any) { const p = document.createElement("p"); p.className = "empty"; p.textContent = `Rien de prévu pour l'instant. Dis « ${S.settings.name}, rappelle-moi de… » ou ajoute une tâche ci-dessous.`; box.appendChild(p); }
+
+  const notes = $("notes"); notes.textContent = "";
+  $("mem-count").textContent = S.notes.length ? `${S.notes.length} élément${S.notes.length > 1 ? "s" : ""}` : "";
+  if (!S.notes.length) { const p = document.createElement("p"); p.className = "empty"; p.textContent = "Les décisions et actions que je retiens apparaîtront ici."; notes.appendChild(p); }
+  for (const n of S.notes.slice(-8).reverse()) {
+    const r = document.createElement("div"); r.className = "mem";
+    const k = document.createElement("span"); k.className = "chip plain"; k.textContent = KINDS[n.kind];
+    const t = document.createElement("div"); t.className = "t"; t.textContent = n.text;
+    const s = document.createElement("div"); s.className = "sub"; s.textContent = frDate(n.date.slice(0, 10)) + (n.project ? " · " + n.project : ""); t.appendChild(s);
+    const x = document.createElement("button"); x.className = "x"; x.type = "button"; x.textContent = "×"; x.setAttribute("aria-label", "Oublier");
+    x.onclick = () => { S.notes = S.notes.filter((y) => y !== n); persist(); renderDay(); toast("Souvenir effacé", "Annuler", () => { S.notes.push(n); persist(); renderDay(); }); };
+    r.append(k, t, x); notes.appendChild(r);
+  }
+
+  const pr = $("projects"); pr.textContent = "";
+  $("proj-count").textContent = S.projects.length ? String(S.projects.length) : "";
+  if (!S.projects.length) { const p = document.createElement("p"); p.className = "empty"; p.textContent = "Dis « nouveau projet… » et je le prépare avec ses premières étapes."; pr.appendChild(p); }
+  for (const p of S.projects.slice().reverse()) {
+    const c = document.createElement("div"); c.className = "proj";
+    const b = document.createElement("b"); b.textContent = p.name;
+    const open = S.tasks.filter((t) => !t.done && normalize(t.project || "") === normalize(p.name)).length;
+    const s = document.createElement("span"); s.className = "sub"; s.textContent = `${p.status} · ${open} étape${open > 1 ? "s" : ""} à faire${p.description ? " · " + p.description : ""}`;
+    c.append(b, s); pr.appendChild(c);
+  }
+}
+
+// Réglages
+function fillVoices() {
+  const sel = $("set-voice"); sel.textContent = "";
+  const add = (v, l) => { const o = document.createElement("option"); o.value = v; o.textContent = l; sel.appendChild(o); };
+  add("auto", "Automatique");
+  if (caps.tts) for (const [k, l] of Object.entries(CLAUDE_VOICES)) add("claude:" + k, l);
+  const vs = browserVoices().filter((v) => /^fr/i.test(v.lang));
+  for (const v of vs) add("os:" + v.name, "Ordinateur — " + v.name);
+  sel.value = [...sel.options].some((o) => o.value === S.settings.voice) ? S.settings.voice : "auto";
+  $("voice-help").textContent = caps.tts
+    ? "Voix Claude : plus naturelles, mais tu appuies sur Espace pour parler. Voix de l'ordinateur : écoute permanente, il suffit de dire mon prénom."
+    : "Sur Mac, les voix « Premium » ou « Améliorée » téléchargées dans Réglages Système → Accessibilité → Contenu énoncé sont les plus naturelles.";
+}
+function openSettings() {
+  $("set-name").value = S.settings.name; $("set-user").value = S.settings.user;
+  $("set-rate").value = S.settings.rate; $("rate-val").textContent = "×" + Number(S.settings.rate).toFixed(2);
+  $("set-depth").value = S.settings.depth; $("set-sens").value = S.settings.sens; $("sens-val").textContent = Number(S.settings.sens).toFixed(2);
+  fillVoices(); updateEngineChip(); $("settings").hidden = false; $("set-name").focus();
+}
+function closeSettings() { $("settings").hidden = true; $("open-settings").focus(); }
+function bindSettings() {
+  $("set-name").addEventListener("input", (e) => { S.settings.name = e.target.value.trim() || "Celia"; renderName(); renderDay(); persist(); });
+  $("set-user").addEventListener("input", (e) => { S.settings.user = e.target.value.trim(); persist(); });
+  $("set-voice").addEventListener("change", async (e) => {
+    S.settings.voice = e.target.value; persist();
+    if (caps.dictation && caps.dictation.active() && !handsFreeMode()) { await caps.dictation.stop(); wantHandsFree = false; }
+    idleUI();
+  });
+  $("set-rate").addEventListener("input", (e) => { S.settings.rate = +e.target.value; $("rate-val").textContent = "×" + S.settings.rate.toFixed(2); persist(); });
+  $("set-depth").addEventListener("change", (e) => { S.settings.depth = e.target.value; persist(); });
+  $("set-sens").addEventListener("input", (e) => { S.settings.sens = +e.target.value; $("sens-val").textContent = S.settings.sens.toFixed(2); persist(); });
+  $("test-voice").addEventListener("click", () => { interacted = true; say(`Bonjour ! Je suis ${S.settings.name}. Voici à quoi ressemble ma voix.`); });
+  $("close-settings").addEventListener("click", closeSettings);
+  $("settings").addEventListener("click", (e) => { if (e.target === $("settings")) closeSettings(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("settings").hidden) closeSettings(); });
+}
+
+// Orbe, clavier, formulaires
+function orbPress() {
+  interacted = true;
+  if (speaking) { stopSpeaking(); return; }
+  if (!caps.dictation) { $("ask-input").focus(); maybeBriefing(); return; }
+  if (handsFreeMode()) {
+    if (caps.dictation.active()) { wantHandsFree = false; caps.dictation.stop(); }
+    else { wantHandsFree = true; startListening(); maybeBriefing(); }
+  } else {
+    if (caps.dictation.active()) { caps.dictation.stop().then(() => { if (pushing && buffer.trim()) processUtterance(); }); }
+    else { pushing = true; buffer = ""; startListening(); }
+  }
+}
+function maybeBriefing() {
+  if (S.settings.lastBriefing === todayIso()) return;
+  S.settings.lastBriefing = todayIso(); persist();
+  const b = briefing(); bubble("celia", b); say(b);
+}
+function bindUI() {
+  $("orb").addEventListener("click", orbPress);
+  document.addEventListener("keydown", (e) => {
+    if (e.code !== "Space" || e.repeat) return;
+    const tag = (document.activeElement && document.activeElement.tagName) || "";
+    if (/INPUT|SELECT|TEXTAREA|BUTTON/.test(tag) || !$("settings").hidden) return;
+    e.preventDefault(); orbPress();
+  });
+  $("stop").addEventListener("click", () => { interacted = true; stopSpeaking(); });
+  $("new-convo").addEventListener("click", () => { turns = []; bubble("note", "Nouvelle conversation"); });
+  $("ask-form").addEventListener("submit", (e) => {
+    e.preventDefault(); interacted = true;
+    const q = $("ask-input").value.trim(); if (!q || busy) return;
+    $("ask-input").value = ""; handle(q);
+  });
+  $("examples").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b || busy) return; interacted = true; handle(b.textContent);
+  });
+  $("add-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const title = $("add-title").value.trim(); if (!title) return;
+    const w = $("add-when").value; const date = w === "" ? null : iso(addDays(new Date(), +w));
+    addTask(title, date, $("add-time").value || null); $("add-title").value = ""; $("add-time").value = "";
+  });
+  $("open-settings").addEventListener("click", openSettings);
+  bindSettings();
+}
+
+// ------------------------------------------------------------------ démarrage
+async function init() {
+  loadLocal(); renderName(); renderDay(); bindUI(); idleUI(); updateEngineChip();
+  try { window.speechSynthesis && speechSynthesis.addEventListener("voiceschanged", () => { if (!$("settings").hidden) fillVoices(); }); } catch (e) {}
+  setInterval(checkReminders, 20000); setInterval(renderDay, 5 * 60000);
+  const use = (n) => (window.claude && window.claude.use ? window.claude.use(n).catch(() => null) : Promise.resolve(null));
+  const [sample, dictation, tts, db, user] = await Promise.all(["sample", "dictation", "tts", "db", "user"].map(use));
+  Object.assign(caps, { sample, dictation, tts, db, user });
+  if (sample) {
+    try { const lim = await sample.limits(); caps.toolsOK = !!(lim && lim.tools); caps.toolMax = (lim && lim.tools && lim.tools.maxCount) || 20; } catch (e) { caps.toolsOK = false; }
+  }
+  if (dictation) {
+    dictation.onPartial(({ text }) => { $("heard").textContent = text ? "… " + text : ""; if (text && !speaking) scheduleFlush(pushing ? 2200 : 1600); });
+    dictation.onFinal(({ text }) => { $("heard").textContent = "Entendu : « " + text.trim() + " »"; onFinal(text); });
+    dictation.onState(({ state, reason }) => {
+      if (state === "idle") {
+        if (reason === "hidden" && wantHandsFree) toast("Je me suis mise en pause pendant que la page était cachée. Clique sur l'orbe pour reprendre.");
+        if (reason === "time_limit" && wantHandsFree) toast("Une heure d'écoute : clique sur l'orbe pour continuer.");
+        if (reason === "unavailable") { caps.dictation = null; }
+        if (reason !== "stopped") wantHandsFree = false;
+      }
+      idleUI();
+    });
+  }
+  if (db && user) {
+    try {
+      const uid = await user.id();
+      if (uid) {
+        const col = db.collection("data/users/" + uid);
+        docRef = col.doc("celia"); journalRef = col.doc("journal");
+        const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 10000));
+        const [snap, jsnap] = await Promise.race([Promise.all([docRef.get(), journalRef.get()]), timeout]);
+        if (snap.exists) mergeState(snap.data());
+        if (jsnap.exists && Array.isArray(jsnap.data().entries)) journal = jsnap.data().entries;
+        $("save-chip").textContent = "Mémoire synchronisée";
+      }
+    } catch (e) { docRef = null; journalRef = null; $("save-chip").textContent = "Mémoire locale seulement"; }
+  }
+  renderName(); renderDay(); updateEngineChip(); idleUI();
+}
+
+window.__celia = { findWake, normalize, frDate, briefing, contextSummary, addTask, updateTask, addNote, createProject, recall, TOOLS, S, buildInput };
+init();
+})();
+</script>
