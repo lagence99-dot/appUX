@@ -18,7 +18,7 @@ PROJECT = {"type": "string", "description": "Nom du projet concerné, s'il y en 
 TOOLS = [
     {"name": "ajouter_tache",
      "description": "Ajoute une tâche, un rendez-vous ou une action à faire au planning. Si une heure est "
-                    "donnée, Celia fera un rappel vocal à ce moment-là.",
+                    "donnée, un rappel vocal sera fait à ce moment-là.",
      "input_schema": _obj({"titre": S, "date": DATE, "heure": TIME, "projet": PROJECT}, ["titre"])},
     {"name": "lister_taches",
      "description": "Liste les tâches d'une période (par défaut : à faire). Utile pour une période au-delà "
@@ -102,7 +102,8 @@ def execute(memory, config, name, args):
 
         if name == "creer_projet":
             base = config.get("projects_dir") or str(Path.home() / "Documents" / "Projets")
-            p = memory.create_project(args.get("nom"), args.get("description"), base, args.get("etapes"))
+            p = memory.create_project(args.get("nom"), args.get("description"), base, args.get("etapes"),
+                                      assistant=config.get("assistant_name") or "Celia")
             for step in (args.get("etapes") or [])[:10]:
                 memory.add_task(step, project=p["name"])
             return json.dumps({"ok": True, "projet": p["name"], "dossier": p["folder"]},

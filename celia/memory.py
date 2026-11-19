@@ -263,7 +263,7 @@ class Memory:
                 return p
         return None
 
-    def create_project(self, name, description, base_dir, steps=None):
+    def create_project(self, name, description, base_dir, steps=None, assistant="Celia"):
         name = (name or "").strip()
         if not name:
             raise ValueError("Le projet n'a pas de nom.")
@@ -278,7 +278,7 @@ class Memory:
         folder.mkdir(parents=True)
         (folder / "documents").mkdir()
         steps = [s for s in (steps or []) if str(s).strip()]
-        lines = [f"# {name}", "", f"*Projet créé le {today().day} {MOIS[today().month - 1]} {today().year} avec Celia.*", "",
+        lines = [f"# {name}", "", f"*Projet créé le {today().day} {MOIS[today().month - 1]} {today().year} avec {assistant}.*", "",
                  "## Objectif", "", (description or "").strip() or "À préciser.", ""]
         if steps:
             lines += ["## Prochaines étapes", ""] + [f"- [ ] {s}" for s in steps] + [""]

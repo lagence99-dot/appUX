@@ -399,7 +399,7 @@ class CeliaApp:
                        bg=BG, fg=FG, highlightthickness=0, troughcolor=PANEL))
 
         v_auto = tk.BooleanVar(value=self.cfg["start_with_system"])
-        place(tk.Checkbutton(win, text="Lancer Celia automatiquement à l'ouverture de session",
+        place(tk.Checkbutton(win, text=f"Lancer {self.name} automatiquement à l'ouverture de session",
                              variable=v_auto, bg=BG, fg=FG, selectcolor=PANEL,
                              activebackground=BG, activeforeground=FG,
                              highlightthickness=0, bd=0, anchor="w"))
@@ -415,7 +415,7 @@ class CeliaApp:
                              activeforeground=FG, highlightthickness=0, bd=0, anchor="w"))
 
         v_pdir = tk.StringVar(value=self.cfg["projects_dir"])
-        label("Dossier des projets", "Celia y crée un sous-dossier pour chaque nouveau projet.")
+        label("Dossier des projets", f"{self.name} y crée un sous-dossier pour chaque nouveau projet.")
         place(tk.Entry(win, textvariable=v_pdir, width=44))
 
         v_listen = tk.BooleanVar(value=self.cfg["listen_on_start"])
