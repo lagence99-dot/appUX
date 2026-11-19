@@ -20,6 +20,9 @@ DEFAULTS = {
     "vosk_model_path": "",          # "" = modèle français téléchargé automatiquement
     "start_with_system": False,     # lancement automatique à l'ouverture de session
     "listen_on_start": True,        # écoute active dès le lancement
+    "morning_briefing": True,       # point du jour au premier lancement de la journée
+    "reminders": True,              # rappels vocaux à l'heure des tâches
+    "projects_dir": str(Path.home() / "Documents" / "Projets"),  # dossier des nouveaux projets
 }
 
 

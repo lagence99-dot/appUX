@@ -5,6 +5,8 @@ import time
 
 import anthropic
 
+from .tools import TOOLS, execute
+
 MODELS = {
     "claude-opus-5-5": "Claude Opus 5.5 (le plus intelligent)",
     "claude-sonnet-5-5": "Claude Sonnet 5.5 (équilibré)",
@@ -19,20 +21,30 @@ JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"
 MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
         "septembre", "octobre", "novembre", "décembre"]
 
-SYSTEM_PROMPT = """Tu es {name}, l'assistante vocale personnelle installée sur l'ordinateur de {user}.
-On te parle à voix haute et ta réponse sera lue par une synthèse vocale.
+SYSTEM_PROMPT = """Tu es {name}, l'assistante vocale personnelle de {user}, installée sur son ordinateur.
+On te parle à voix haute et ta réponse sera lue par une synthèse vocale. Tu tutoies {user}.
 
 Règles de forme (importantes, car tout est lu à voix haute) :
 - Écris uniquement des phrases parlées naturelles : pas de markdown, pas de titres, pas de listes à puces, pas de tableaux, pas d'emojis, pas d'URL.
 - Va droit au but : en général deux à quatre phrases. Développe seulement si on te le demande.
-- Écris les nombres, unités et abréviations comme on les dirait à l'oral quand cela aide la lecture.
+- Ne lis jamais les identifiants techniques (T12, N4…) à voix haute.
 - Réponds dans la langue de la question (le français par défaut).
 
-La transcription de la voix peut contenir des erreurs : interprète la demande de façon raisonnable, et si elle est vraiment incompréhensible, demande simplement de répéter.
-Pour l'actualité, la météo, les horaires ou tout ce qui change, utilise la recherche web si elle est disponible.
-Tu ne peux pas agir sur l'ordinateur (ouvrir des applications, envoyer des messages) : dis-le simplement si on te le demande.
+Ton rôle : répondre aux questions, mais aussi être la secrétaire et la partenaire de projets de {user}.
+- Tu as une mémoire permanente (planning, décisions, actions mises en place, projets, conversations passées). Le planning et ce que tu as retenu récemment sont résumés plus bas : sers-t'en directement pour « qu'est-ce que j'ai aujourd'hui / demain ».
+- Quand {user} te demande de noter, planifier ou de lui rappeler quelque chose, utilise tes outils, puis confirme brièvement (quoi et quand).
+- Quand une décision est prise ou qu'une action est mise en place pendant l'échange, enregistre-la avec l'outil retenir, sans le demander à chaque fois.
+- Pour une question sur le passé (« qu'avait-on décidé pour… », « on en était où… »), cherche avec rechercher_memoire avant de répondre.
+- Pour un nouveau projet, crée-le avec creer_projet en proposant trois à cinq premières étapes concrètes.
+- N'invente jamais une tâche ou un souvenir : si tu ne trouves rien, dis-le.
 
-Date et heure actuelles : {now}."""
+La transcription de la voix peut contenir des erreurs : interprète la demande de façon raisonnable, et si elle est vraiment incompréhensible, demande de répéter.
+Pour l'actualité, la météo ou tout ce qui change, utilise la recherche web si elle est disponible.
+
+Date et heure actuelles : {now} (date ISO : {iso}).
+
+=== Mémoire de {user} ===
+{memory}"""
 
 
 def _now_fr() -> str:
@@ -49,8 +61,9 @@ def clean_for_speech(text: str) -> str:
 
 
 class Brain:
-    def __init__(self, config):
+    def __init__(self, config, memory):
         self.config = config
+        self.memory = memory
         self.history = []
         self.last_exchange = 0.0
 
@@ -70,23 +83,26 @@ class Brain:
             name=cfg.get("assistant_name") or "Celia",
             user=cfg.get("user_name") or "l'utilisateur",
             now=_now_fr(),
+            iso=datetime.date.today().isoformat(),
+            memory=self.memory.context_summary() or "(vide pour l'instant)",
         )
         params = dict(
             model=model,
             max_tokens=16000,
             system=system,
             output_config={"effort": cfg.get("effort") or "low"},
+            tools=list(TOOLS),
         )
         if cfg.get("web_search", True):
             search_type = ("web_search_20250305" if model.startswith("claude-haiku")
                            else "web_search_20260209")
-            params["tools"] = [{
+            params["tools"].append({
                 "type": search_type,
                 "name": "web_search",
                 "max_uses": 3,
                 "user_location": {"type": "approximate",
                                   "country": (cfg.get("country") or "FR").upper()[:2]},
-            }]
+            })
         # Opus / Sonnet : si un filtre de sécurité refuse par erreur, l'API bascule
         # automatiquement sur un autre modèle (fallback côté serveur).
         use_fallback = not model.startswith("claude-haiku")
@@ -98,7 +114,7 @@ class Brain:
         messages = self.history + [{"role": "user", "content": question}]
         parts = []
         try:
-            for _ in range(6):
+            for _ in range(12):
                 if use_fallback:
                     resp = client.beta.messages.create(messages=messages, **params)
                 else:
@@ -106,6 +122,18 @@ class Brain:
                 if resp.stop_reason == "refusal":
                     return "Désolée, je ne peux pas répondre à cette demande."
                 parts += [b.text for b in resp.content if b.type == "text"]
+                if resp.stop_reason == "tool_use":
+                    # Claude utilise la mémoire : on exécute ses outils et on lui renvoie les résultats.
+                    results = []
+                    for b in resp.content:
+                        if b.type == "tool_use":
+                            out, is_error = execute(self.memory, cfg, b.name, b.input)
+                            results.append({"type": "tool_result", "tool_use_id": b.id,
+                                            "content": out, "is_error": is_error})
+                    messages = messages + [{"role": "assistant", "content": resp.content},
+                                           {"role": "user", "content": results}]
+                    parts = []  # seule la réponse finale est lue à voix haute
+                    continue
                 if resp.stop_reason != "pause_turn":
                     break
                 # Recherche web longue : on relance pour laisser Claude terminer.
@@ -127,4 +155,8 @@ class Brain:
                          {"role": "assistant", "content": answer}]
         self.history = self.history[-MAX_HISTORY_MESSAGES:]
         self.last_exchange = time.time()
+        try:
+            self.memory.log_exchange(question, answer)
+        except OSError:
+            pass
         return answer

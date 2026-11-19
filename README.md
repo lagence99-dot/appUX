@@ -25,6 +25,31 @@ arrière-plan, et vous l'appelez par son prénom :
 - Vous pouvez aussi **écrire** vos questions dans la fenêtre.
 - Démarrage automatique à l'ouverture de session (option dans les Réglages).
 
+## Mémoire permanente, planning et projets
+
+Celia garde en mémoire, **sur votre ordinateur**, tout ce que vous organisez avec elle,
+même après un redémarrage :
+
+- **Planning et tâches** : « Celia, rappelle-moi d'appeler le comptable demain à 9 h 30 »,
+  « qu'est-ce qu'il me reste à faire aujourd'hui ? », « et demain ? »,
+  « c'est fait pour le devis », « décale la réunion à vendredi ».
+- **Rappels vocaux** : à l'heure prévue, Celia vous prévient à voix haute (même micro coupé).
+- **Point du matin** : au premier lancement de la journée, elle annonce ce qui est prévu
+  aujourd'hui, ce qui est en retard et ce qui arrive demain.
+- **Décisions et actions mises en place** : « Celia, retiens qu'on passe par Stripe pour les
+  paiements ». Elle note aussi d'elle-même les décisions prises pendant vos échanges.
+- **Retour en arrière à tout moment** : « qu'avait-on décidé pour le logo ? »,
+  « on en était où sur l'appli resto ? ». Chaque conversation est archivée dans un journal.
+- **Projets** : « Celia, crée un nouveau projet pour une application de réservation ».
+  Elle crée un dossier dans `Documents\Projets` avec une fiche `PROJET.md` (objectif, premières
+  étapes), et ajoute ces étapes à votre planning.
+
+Le bouton **📋 Planning & mémoire** affiche tout cela : tâches (cocher, supprimer, ajouter),
+souvenirs (les effacer), projets (ouvrir leur dossier).
+
+Les données sont dans `%APPDATA%\Celia\` : `memoire.json` (planning, notes, projets) et
+`journal.jsonl` (historique des conversations). Rien n'est stocké en ligne.
+
 ## Installation (Windows)
 
 1. Installez **Python 3.10 ou plus récent** depuis <https://www.python.org/downloads/>
@@ -80,7 +105,9 @@ choisissez Haiku 5.5 dans les Réglages.
 ```
 Celia.pyw            lanceur (sans fenêtre de console)
 celia/app.py         interface, bouton ON/OFF, icône de notification, logique du mot de réveil
-celia/brain.py       appels à Claude (API Anthropic), mémoire de conversation, recherche web
+celia/brain.py       appels à Claude (API Anthropic), boucle d'outils, recherche web
+celia/memory.py      mémoire permanente : tâches, rappels, notes, projets, journal
+celia/tools.py       outils que Claude utilise pour gérer la mémoire et les projets
 celia/voice.py       micro + reconnaissance Vosk hors-ligne, synthèse vocale, détection du prénom
 celia/system.py      raccourcis du bureau, démarrage automatique, instance unique
 celia/config.py      réglages

@@ -11,6 +11,7 @@ from tkinter import messagebox, ttk
 from . import system
 from .brain import EFFORTS, MODELS, Brain
 from .config import Config
+from .memory import NOTE_KINDS, Memory, fr_date
 from .voice import Speaker, beep, ensure_vosk_model, find_wake_word, normalize
 
 FOLLOW_UP_SECONDS = 8   # après « Oui ? », délai pour poser la question
@@ -26,7 +27,9 @@ ON, OFF, ACCENT = "#2ecc71", "#5a5a66", "#7c5cff"
 class CeliaApp:
     def __init__(self, start_toggled_off=False):
         self.cfg = Config()
-        self.brain = Brain(self.cfg)
+        self.memory = Memory()
+        self.brain = Brain(self.cfg, self.memory)
+        self.planning_win = None
         self.ui_q = queue.Queue()
         self.listener = None
         self.speaker = None
@@ -52,6 +55,9 @@ class CeliaApp:
 
         threading.Thread(target=self._init_voice, daemon=True).start()
         self._start_tray()
+        self.memory.listeners.append(lambda: self.ui(self._refresh_planning))
+        self.root.after(2500, self._morning_briefing)
+        self.root.after(15000, self._check_reminders)
         if not self.cfg.api_key:
             self.root.after(600, lambda: self.open_settings(first_run=True))
 
@@ -125,10 +131,13 @@ class CeliaApp:
         self._btn(entry_row, "Envoyer", self._send_typed).pack(side="left", padx=(6, 0))
 
         row = tk.Frame(self.root, bg=BG)
-        row.pack(fill="x", padx=14, pady=(0, 14))
+        row.pack(fill="x", padx=14, pady=(0, 6))
         self._btn(row, "⏹ Interrompre", self.interrupt).pack(side="left")
         self._btn(row, "↺ Nouvelle conversation", self.new_conversation).pack(side="left", padx=6)
-        self._btn(row, "⚙ Réglages", self.open_settings).pack(side="right")
+        row2 = tk.Frame(self.root, bg=BG)
+        row2.pack(fill="x", padx=14, pady=(0, 14))
+        self._btn(row2, "📋 Planning & mémoire", self.open_planning).pack(side="left")
+        self._btn(row2, "⚙ Réglages", self.open_settings).pack(side="right")
 
     def _btn(self, parent, text, cmd):
         return tk.Button(parent, text=text, command=cmd, bg=PANEL, fg=FG, relief="flat",
@@ -395,6 +404,20 @@ class CeliaApp:
                              activebackground=BG, activeforeground=FG,
                              highlightthickness=0, bd=0, anchor="w"))
 
+        v_brief = tk.BooleanVar(value=self.cfg["morning_briefing"])
+        place(tk.Checkbutton(win, text="Point du jour à voix haute au premier lancement de la journée",
+                             variable=v_brief, bg=BG, fg=FG, selectcolor=PANEL, activebackground=BG,
+                             activeforeground=FG, highlightthickness=0, bd=0, anchor="w"))
+
+        v_remind = tk.BooleanVar(value=self.cfg["reminders"])
+        place(tk.Checkbutton(win, text="Rappels vocaux à l'heure prévue des tâches",
+                             variable=v_remind, bg=BG, fg=FG, selectcolor=PANEL, activebackground=BG,
+                             activeforeground=FG, highlightthickness=0, bd=0, anchor="w"))
+
+        v_pdir = tk.StringVar(value=self.cfg["projects_dir"])
+        label("Dossier des projets", "Celia y crée un sous-dossier pour chaque nouveau projet.")
+        place(tk.Entry(win, textvariable=v_pdir, width=44))
+
         v_listen = tk.BooleanVar(value=self.cfg["listen_on_start"])
         place(tk.Checkbutton(win, text="Écoute active dès le lancement", variable=v_listen, bg=BG, fg=FG,
                              selectcolor=PANEL, activebackground=BG, activeforeground=FG,
@@ -415,6 +438,9 @@ class CeliaApp:
             self.cfg["speech_rate"] = int(v_rate.get())
             self.cfg["wake_sensitivity"] = round(float(v_sens.get()), 2)
             self.cfg["listen_on_start"] = v_listen.get()
+            self.cfg["morning_briefing"] = v_brief.get()
+            self.cfg["reminders"] = v_remind.get()
+            self.cfg["projects_dir"] = v_pdir.get().strip() or self.cfg["projects_dir"]
             if v_auto.get() != self.cfg["start_with_system"]:
                 try:
                     system.set_autostart(v_auto.get())
@@ -476,6 +502,175 @@ class CeliaApp:
         self.root.deiconify()
         self.root.lift()
         self.root.focus_force()
+
+    # ------------------------------------------------------------------ #
+    #  Briefing du matin et rappels
+    # ------------------------------------------------------------------ #
+    def _morning_briefing(self):
+        if self.speaker is None:
+            self.root.after(1000, self._morning_briefing)
+            return
+        today = time.strftime("%Y-%m-%d")
+        if not self.cfg.get("morning_briefing", True) or self.memory.data.get("last_briefing") == today:
+            return
+        with self.memory.lock:
+            self.memory.data["last_briefing"] = today
+            self.memory._save()
+        self.speak(self.memory.briefing(self.cfg.get("user_name", "")))
+
+    def _check_reminders(self):
+        try:
+            if self.cfg.get("reminders", True):
+                for t in self.memory.due_reminders():
+                    text = f"Petit rappel : {t['title']}."
+                    if t.get("project"):
+                        text += f" C'est pour le projet {t['project']}."
+                    if self.tray is not None:
+                        try:
+                            self.tray.notify(t["title"], f"{self.name} — rappel")
+                        except Exception:
+                            pass
+                    self.speak(text)
+        finally:
+            self.root.after(20000, self._check_reminders)
+
+    # ------------------------------------------------------------------ #
+    #  Fenêtre « Planning & mémoire »
+    # ------------------------------------------------------------------ #
+    def open_planning(self):
+        if self.planning_win is not None and self.planning_win.winfo_exists():
+            self.planning_win.deiconify()
+            self.planning_win.lift()
+            return
+        win = self.planning_win = tk.Toplevel(self.root)
+        win.title(f"{self.name} — Planning & mémoire")
+        win.geometry("720x480")
+        win.configure(bg=BG)
+        style = ttk.Style(win)
+        style.configure("Treeview", background=PANEL, fieldbackground=PANEL, foreground=FG, rowheight=24,
+                        borderwidth=0)
+        style.configure("Treeview.Heading", background=BG, foreground=FG, relief="flat")
+        style.map("Treeview", background=[("selected", ACCENT)])
+        style.configure("TNotebook", background=BG, borderwidth=0)
+        style.configure("TNotebook.Tab", background=PANEL, foreground=FG, padding=(12, 4))
+        style.map("TNotebook.Tab", background=[("selected", ACCENT)], foreground=[("selected", "white")])
+
+        nb = ttk.Notebook(win)
+        nb.pack(fill="both", expand=True, padx=10, pady=10)
+
+        def tab(title, columns, widths):
+            frame = tk.Frame(nb, bg=BG)
+            nb.add(frame, text=title)
+            tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="browse")
+            for c, w in zip(columns, widths):
+                tree.heading(c, text=c)
+                tree.column(c, width=w, anchor="w", stretch=(w > 200))
+            sb = tk.Scrollbar(frame, command=tree.yview)
+            tree.configure(yscrollcommand=sb.set)
+            bar = tk.Frame(frame, bg=BG)
+            bar.pack(side="bottom", fill="x", pady=6)
+            sb.pack(side="right", fill="y")
+            tree.pack(fill="both", expand=True)
+            return tree, bar
+
+        # Onglet tâches
+        self.pl_tasks, bar = tab("Planning", ("Quand", "Tâche", "Projet"), (170, 380, 140))
+        self.pl_show_done = tk.BooleanVar(value=False)
+        self._btn(bar, "✔ Terminée", lambda: self._task_action("done")).pack(side="left")
+        self._btn(bar, "🗑 Supprimer", lambda: self._task_action("delete")).pack(side="left", padx=6)
+        tk.Checkbutton(bar, text="Afficher les tâches terminées", variable=self.pl_show_done,
+                       command=self._refresh_planning, bg=BG, fg=FG, selectcolor=PANEL,
+                       activebackground=BG, activeforeground=FG, highlightthickness=0, bd=0).pack(side="left", padx=6)
+        add = tk.Frame(self.pl_tasks.master, bg=BG)
+        add.pack(side="bottom", fill="x", before=bar)
+        self.pl_new = tk.Entry(add, bg=PANEL, fg=FG, insertbackground=FG, relief="flat")
+        self.pl_new.pack(side="left", fill="x", expand=True, ipady=4)
+        self.pl_new_date = tk.Entry(add, bg=PANEL, fg=FG, insertbackground=FG, relief="flat", width=12)
+        self.pl_new_date.insert(0, time.strftime("%Y-%m-%d"))
+        self.pl_new_date.pack(side="left", padx=4, ipady=4)
+        self.pl_new_time = tk.Entry(add, bg=PANEL, fg=FG, insertbackground=FG, relief="flat", width=6)
+        self.pl_new_time.pack(side="left", ipady=4)
+        self._btn(add, "+ Ajouter", self._add_task_manual).pack(side="left", padx=(4, 0))
+        tk.Label(self.pl_tasks.master, text="Nouvelle tâche  ·  date (AAAA-MM-JJ, vide = sans date)  ·  heure (HH:MM)",
+                 bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(side="bottom", anchor="w", before=add)
+
+        # Onglet mémoire
+        self.pl_notes, bar = tab("Mémoire", ("Date", "Type", "Projet", "Contenu"), (120, 150, 120, 320))
+        self._btn(bar, "🗑 Oublier", self._delete_note).pack(side="left")
+
+        # Onglet projets
+        self.pl_projects, bar = tab("Projets", ("Projet", "Statut", "Créé", "Dossier"), (180, 90, 110, 320))
+        self._btn(bar, "📂 Ouvrir le dossier", self._open_project_folder).pack(side="left")
+
+        self._refresh_planning()
+
+    def _refresh_planning(self):
+        if self.planning_win is None or not self.planning_win.winfo_exists():
+            return
+        m = self.memory
+        tree = self.pl_tasks
+        tree.delete(*tree.get_children())
+        for t in m.list_tasks(include_done=self.pl_show_done.get()):
+            when = fr_date(t["date"]) if t["date"] else "sans date"
+            if t["time"]:
+                when += f" · {t['time']}"
+            title = ("✔ " if t["done"] else "") + t["title"]
+            tree.insert("", "end", iid=t["id"], values=(when, title, t.get("project") or ""))
+        tree = self.pl_notes
+        tree.delete(*tree.get_children())
+        for n in reversed(m.data["notes"]):
+            tree.insert("", "end", iid=n["id"], values=(fr_date(n["date"][:10]), NOTE_KINDS.get(n["kind"], "Note"),
+                                                       n.get("project") or "", n["text"]))
+        tree = self.pl_projects
+        tree.delete(*tree.get_children())
+        for p in reversed(m.data["projects"]):
+            tree.insert("", "end", iid=p["id"], values=(p["name"], p["status"], fr_date(p["created"][:10]),
+                                                       p["folder"]))
+
+    def _task_action(self, action):
+        sel = self.pl_tasks.selection()
+        if not sel:
+            return
+        if action == "done":
+            t = self.memory.find_task(sel[0])
+            self.memory.update_task(sel[0], done=not t["done"])
+        elif messagebox.askyesno("Supprimer", "Supprimer cette tâche ?", parent=self.planning_win):
+            self.memory.delete_task(sel[0])
+
+    def _add_task_manual(self):
+        title = self.pl_new.get().strip()
+        if not title:
+            return
+        try:
+            self.memory.add_task(title, self.pl_new_date.get().strip() or None, self.pl_new_time.get().strip() or None)
+        except ValueError as e:
+            messagebox.showwarning("Planning", str(e), parent=self.planning_win)
+            return
+        self.pl_new.delete(0, "end")
+        self.pl_new_time.delete(0, "end")
+
+    def _delete_note(self):
+        sel = self.pl_notes.selection()
+        if sel and messagebox.askyesno("Oublier", "Effacer ce souvenir ?", parent=self.planning_win):
+            self.memory.delete_note(sel[0])
+
+    def _open_project_folder(self):
+        sel = self.pl_projects.selection()
+        if not sel:
+            return
+        folder = next((p["folder"] for p in self.memory.data["projects"] if p["id"] == sel[0]), None)
+        if not folder:
+            return
+        import subprocess
+        try:
+            if sys.platform == "win32":
+                os.startfile(folder)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", folder])
+            else:
+                subprocess.Popen(["xdg-open", folder])
+        except OSError as e:
+            messagebox.showerror("Dossier", str(e), parent=self.planning_win)
 
     def handle_command(self, cmd):  # depuis les raccourcis du bureau
         if cmd == "show":
